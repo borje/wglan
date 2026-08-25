@@ -460,6 +460,7 @@ wg set wglan0 peer <PUBKEY> remove
 nft add table inet wglan
 nft add chain inet wglan input '{ type filter hook input priority 0; policy accept; }'
 nft add chain inet wglan mesh
+nft add rule  inet wglan mesh  ct state established,related accept
 nft add rule  inet wglan mesh  tcp dport 51821 accept
 nft add rule  inet wglan mesh  icmp type echo-request accept
 nft add rule  inet wglan input iif "wglan0" jump mesh
@@ -476,9 +477,20 @@ working to dropped, and an `accept` in a second table at priority −100 does no
 The shape above keeps the guarantee and scopes it. `mesh` is a **regular** chain, so the allow rules
 config management appends into it land above the terminal `drop` in `input` — `nft add rule`
 appends, so an allow-list and a terminal drop in the same chain would be in the wrong order by
-construction. The two seeded rules are wglan's own: the control port, because §6.1 requires `LEAVE`
-and `PROBE` to arrive inside the tunnel and nothing else would ever allow them, and ICMP echo,
-because `ping <peer>` is the first thing anyone reaches for.
+construction. Three seeded rules, and the order matters:
+
+1. **`ct state established,related accept`, first.** A default-deny input chain without it breaks
+   every connection this host *initiates* over the mesh: the replies come back on an ephemeral port
+   that no rule allows. It breaks `ping <peer>` too — the request is allowed inbound by rule 3, the
+   echo-*reply* to our own ping is not. `related` also admits ICMP errors, which is what keeps
+   path-MTU discovery working on a 1420-byte tunnel. This was verified in a namespace both ways:
+   without the rule, an outbound `ping` and an outbound TCP connect both hang; with it, both work
+   and an unallowed inbound port is still refused.
+2. **The control port**, because §6.1 requires `LEAVE` and `PROBE` to arrive inside the tunnel and
+   nothing else would ever allow them.
+3. **ICMP echo-request**, so a peer can ping *this* node — the first thing anyone reaches for.
+
+Everything past that is the operator's, appended into `mesh`.
 
 **Reads for `status`:**
 ```
@@ -554,8 +566,8 @@ Two concerns, two owners:
 - **wglan** ensures, at startup, that `table inet wglan` exists with the exact shape in §11:
   a base chain `input` at `policy accept`, a regular chain `mesh`, and two rules scoping the
   fail-closed drop to `iif "wglan0"` — **created only if the table is missing.** If it exists,
-  wglan touches nothing. Beyond its own control port and ICMP echo it never inspects ports,
-  services, or peers.
+  wglan touches nothing. Beyond conntrack, its own control port and ICMP echo it never inspects
+  ports, services, or peers.
 - **Config management appends the allow rules into the `mesh` chain**, e.g.
   `nft add rule inet wglan mesh tcp dport 22 accept`. Not a separate table: two independently-owned
   tables both hooked at `input` need their relative priorities primed correctly for an ACCEPT in one

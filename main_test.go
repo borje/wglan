@@ -322,8 +322,25 @@ func TestEnsureFirewallDoesNotLockOutTheHost(t *testing.T) {
 	if len(jump) != 1 || len(drop) != 1 {
 		t.Fatalf("want one scoped jump and one scoped drop, got %d/%d", len(jump), len(drop))
 	}
+	// Without a conntrack rule a default-deny input chain breaks every connection
+	// this host initiates over the mesh — including the echo-reply to its own
+	// ping. It must come first in the chain, ahead of the port rules.
+	ctRule := f.find("nft", "add", "rule", "inet", "wglan", "mesh", "ct", "state", "established,related", "accept")
+	if len(ctRule) != 1 {
+		t.Fatal("no `ct state established,related accept` rule: outbound connections over the mesh would hang")
+	}
+	var firstMesh []string
+	for _, c := range f.argv() {
+		if len(c) > 5 && c[1] == "add" && c[2] == "rule" && c[5] == "mesh" {
+			firstMesh = c
+			break
+		}
+	}
+	if !slices.Contains(firstMesh, "ct") {
+		t.Errorf("first rule in the mesh chain is %v, want the conntrack rule", firstMesh)
+	}
 	// wglan's own control port and ICMP echo live in the operator-owned chain, so
-	// in-tunnel LEAVE/PROBE and `ping` work out of the box.
+	// in-tunnel LEAVE/PROBE and inbound `ping` work out of the box.
 	if len(f.find("nft", "add", "rule", "inet", "wglan", "mesh", "tcp", "dport", "51821", "accept")) != 1 {
 		t.Error("control port not allowed on the mesh interface")
 	}

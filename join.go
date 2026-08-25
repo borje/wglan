@@ -458,10 +458,11 @@ func (n *Node) handleProbe(conn net.Conn, p envelope.Payload, from string) {
 	}
 	age := int64(-1)
 	if known {
-		if v, err := n.handshakeAges(); err == nil {
-			if a, seen := v[p.Target]; seen {
-				age = a
-			}
+		v, err := n.handshakeAges()
+		if err != nil {
+			log.Printf("probe <- %s: cannot read handshakes: %v", from, err)
+		} else if a, seen := v[p.Target]; seen {
+			age = a
 		}
 	}
 	log.Printf("probe <- %s (%s): target %s known=%v age=%ds", from, short(p.Pubkey), short(p.Target), known, age)
@@ -489,7 +490,12 @@ func (n *Node) probeMesh(target envelope.Peer) {
 	n.mu.Unlock()
 
 	reachable, asked := 0, 0
-	if ages, err := n.handshakeAges(); err == nil {
+	// Our own vote needs `wg show`, which needs CAP_NET_ADMIN. Unprivileged, we
+	// still poll every peer — but say so, rather than quietly shrinking the
+	// denominator.
+	if ages, err := n.handshakeAges(); err != nil {
+		log.Printf("probe: cannot read our own handshakes, reporting peers only: %v", err)
+	} else {
 		asked++
 		if a, ok := ages[target.Pubkey]; ok && a >= 0 && a < staleAfterSeconds {
 			reachable++

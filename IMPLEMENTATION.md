@@ -68,7 +68,8 @@ holding is still alive** — that is the check draft 1's skeleton failed.
 TCP listener, `JOIN` handler, `JOIN_REPLY`, the peer-add `wg set`, the hosts block.
 
 *Accept:* two VMs. Node2 joins node1; `ping 10.90.0.1` from node2 and `ping 10.90.0.2` from node1
-both work — the skeleton allows ICMP echo on `wglan0` for exactly this reason; `curl
+**both** work — one direction passing and the other hanging is the signature of a missing conntrack
+rule, which is why the skeleton seeds one; `curl
 http://node1.mesh` resolves, once config management has allowed 80 in the `mesh` chain. Then reboot
 node2 — the tunnel returns with no join and no network round trip.
 

@@ -142,6 +142,14 @@ func (s *Sys) EnsureFirewall(controlPort int) error {
 		{"add", "table", "inet", "wglan"},
 		{"add", "chain", "inet", "wglan", "input", "{ type filter hook input priority 0; policy accept; }"},
 		{"add", "chain", "inet", "wglan", "mesh"},
+		// First, and load-bearing: a default-deny input chain with no conntrack
+		// rule breaks every connection this host *initiates* over the mesh, since
+		// the replies arrive on ephemeral ports nothing allows. It also breaks
+		// `ping <peer>` — the echo-request is allowed inbound below, but the
+		// echo-reply to our own ping is not. `related` additionally lets ICMP
+		// errors through, which is what keeps path-MTU discovery working on a
+		// 1420-byte tunnel.
+		{"add", "rule", "inet", "wglan", "mesh", "ct", "state", "established,related", "accept"},
 		{"add", "rule", "inet", "wglan", "mesh", "tcp", "dport", strconv.Itoa(controlPort), "accept"},
 		{"add", "rule", "inet", "wglan", "mesh", "icmp", "type", "echo-request", "accept"},
 		{"add", "rule", "inet", "wglan", "input", "iif", s.Iface, "jump", "mesh"},
@@ -152,7 +160,7 @@ func (s *Sys) EnsureFirewall(controlPort int) error {
 			return err
 		}
 	}
-	log.Printf("created nftables table inet wglan: %s is default-deny except tcp/%d and icmp echo", s.Iface, controlPort)
+	log.Printf("created nftables table inet wglan: %s is default-deny except established traffic, tcp/%d and icmp echo", s.Iface, controlPort)
 	return nil
 }
 

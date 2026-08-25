@@ -980,6 +980,7 @@ node7 (10.90.0.7): reachable from <span style="color:var(--data)">10/11</span> p
     iif "wglan0" drop          <span style="color:var(--muted)">// fail-closed, this interface only</span>
   }
   chain mesh {                 <span style="color:var(--muted)">// regular chain — the allow-list</span>
+    ct state established,related accept
     tcp dport 51821 accept     <span style="color:var(--muted)">// wglan's own control plane</span>
     icmp type echo-request accept
     <span style="color:var(--muted)">tcp dport 22 accept        // appended per node, e.g. via Ansible host_vars</span>
@@ -997,7 +998,10 @@ node7 (10.90.0.7): reachable from <span style="color:var(--data)">10/11</span> p
           guarantee and scopes it — and <code>mesh</code> is a <em>regular</em> chain precisely
           because <code>nft add rule</code> appends: an allow-list and a terminal drop in one chain
           would be in the wrong order by construction, silently disabling every rule the operator
-          adds.
+          adds. The <code>ct state</code> rule comes first for a reason of the same kind: a
+          default-deny input chain without it breaks every connection the host <em>initiates</em>
+          over the mesh, replies arriving on ephemeral ports nothing allows — including the
+          echo-reply to its own <code>ping</code>.
         </p>
       </div>
 
