@@ -13,11 +13,13 @@ go.mod                  module github.com/atvirokodosprendimai/wglan — no requ
 main.go                 flag parsing, subcommand dispatch, bring-up, serve
 join.go                 JOIN/LEAVE/PROBE client + handlers, fan-out, rate limiter
 state.go                peers.json load/save (atomic), peer lookups
-system.go               wg/ip/nft/hosts side effects — every exec.Command lives here
+system.go               wg/ip/hosts side effects — every exec.Command lives here
 status.go               wg show parsing, stale determination
 main_test.go            hosts block, argv, merge rules, three-node convergence, hardening
 envelope/envelope.go    seal/open, HKDF, freshness, seen-set, field validation
 envelope/envelope_test.go
+firewall_test.go        guards the embedded ruleset; `nft -c -f` it when run as root
+nftables/wglan.conf     the firewall skeleton, embedded and printed by `wglan firewall`
 testdata/mesh.sh        three netns end-to-end; needs root and wireguard-tools
 ```
 
@@ -54,14 +56,15 @@ from SPEC §4.3, each with one valid and one hostile input (`hostname` containin
 
 ### 2 · Interface + state
 
-`ip`/`wg` bring-up, keygen, `peers.json` atomic write, reload-on-restart, the firewall skeleton.
-Still no protocol.
+`ip`/`wg` bring-up, keygen, `peers.json` atomic write, reload-on-restart. Still no protocol. The
+firewall is not part of bring-up: `wglan firewall` prints a ruleset and the operator installs it
+(SPEC §12.5).
 
 *Accept:* on one host, `wglan join --mesh-ip 10.90.0.1/24 --secret ...` with no `--bootstrap`
 brings up `wglan0` holding the address; `wg show wglan0` lists it with no peers; kill and rerun —
 it comes back from `peers.json` without touching the network. Second run must be silent about
-everything already correct. Then `nft list table inet wglan`, and **check the SSH session you are
-holding is still alive** — that is the check draft 1's skeleton failed.
+everything already correct. Separately: `wglan firewall | diff - nftables/wglan.conf` is empty, and
+`sudo nft -c -f <(wglan firewall)` passes.
 
 ### 3 · Two-node join
 
@@ -69,7 +72,7 @@ TCP listener, `JOIN` handler, `JOIN_REPLY`, the peer-add `wg set`, the hosts blo
 
 *Accept:* two VMs. Node2 joins node1; `ping 10.90.0.1` from node2 and `ping 10.90.0.2` from node1
 **both** work — one direction passing and the other hanging is the signature of a missing conntrack
-rule, which is why the skeleton seeds one; `curl
+rule, which is why the shipped ruleset leads with one; `curl
 http://node1.mesh` resolves, once config management has allowed 80 in the `mesh` chain. Then reboot
 node2 — the tunnel returns with no join and no network round trip.
 

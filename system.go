@@ -125,56 +125,6 @@ func (s *Sys) addrs() ([]string, error) {
 	return got, nil
 }
 
-// EnsureFirewall creates the fail-closed skeleton if it is missing, and touches
-// nothing if it already exists.
-//
-// The base chain is policy *accept* and the drop is scoped to the mesh interface
-// by an explicit rule. A base chain with `policy drop` would drop every inbound
-// packet on the host — LAN SSH and WireGuard's own UDP port included — because a
-// policy cannot be conditioned on an interface, and a drop in any base chain at
-// the input hook is final. The operator's allow-list goes in the regular `mesh`
-// chain, so `nft add rule` appends land above the terminal drop.
-func (s *Sys) EnsureFirewall(controlPort int) error {
-	if _, err := s.Run("nft", "list", "table", "inet", "wglan"); err == nil {
-		return nil // operator-owned from here on
-	}
-	// One batch, one argv element, one netlink transaction: nft applies it whole
-	// or not at all. Seven separate `nft add` calls could fail on the fourth and
-	// leave a table with no drop rule in it — and because the check above is on
-	// the *table*, no later start would ever repair that. A half-built skeleton
-	// fails open, so it must not be reachable.
-	//
-	// `iifname`, not `iif`: `iif` resolves to an interface index at load time, so
-	// it requires wglan0 to already exist and silently stops matching if the
-	// interface is ever deleted and recreated with a different index. Matching on
-	// the name has no ordering dependency and survives a re-create.
-	//
-	// `ct state established,related` comes first and is load-bearing: without it
-	// a default-deny input chain drops the replies to every connection this host
-	// initiates over the mesh, including the echo-reply to its own ping.
-	batch := fmt.Sprintf(`add table inet wglan
-add chain inet wglan input { type filter hook input priority 0; policy accept; }
-add chain inet wglan mesh
-add rule inet wglan mesh ct state established,related accept
-add rule inet wglan mesh tcp dport %d accept
-add rule inet wglan mesh icmp type echo-request accept
-add rule inet wglan input iifname %q jump mesh
-add rule inet wglan input iifname %q drop`, controlPort, s.Iface, s.Iface)
-	if _, err := s.Run("nft", batch); err != nil {
-		return err
-	}
-	log.Printf("created nftables table inet wglan: %s is default-deny except established traffic, tcp/%d and icmp echo", s.Iface, controlPort)
-	return nil
-}
-
-// FirewallPresent reports whether the table is there. Read-only: used to warn
-// when --no-firewall cannot deliver what it promises because a skeleton from an
-// earlier run is still in force.
-func (s *Sys) FirewallPresent() bool {
-	_, err := s.Run("nft", "list", "table", "inet", "wglan")
-	return err == nil
-}
-
 // SetPeer adds or updates one peer. One invocation, no full-config rewrite.
 func (s *Sys) SetPeer(p envelope.Peer) error {
 	_, err := s.Run("wg", "set", s.Iface,

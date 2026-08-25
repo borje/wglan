@@ -19,9 +19,6 @@ type Self struct {
 	MeshIP      string `json:"mesh_ip"`
 	ListenPort  int    `json:"listen_port"`
 	ControlPort int    `json:"control_port"`
-	// NoFirewall persists --no-firewall, so `run` after a reboot does not
-	// silently re-close an interface the operator deliberately opened.
-	NoFirewall bool `json:"no_firewall,omitempty"`
 }
 
 // State is the whole of /var/lib/wglan/peers.json.

@@ -955,58 +955,61 @@ node7 (10.90.0.7): reachable from <span style="color:var(--data)">10/11</span> p
         <div class="split-card daemon">
           <div class="who">The daemon owns</div>
           <p>
-            One idempotent check at startup: does <code>table inet wglan</code> exist? If not,
-            create it in the exact shape below — a base chain that accepts by default, and two
-            rules that make <code>wglan0</code> and only <code>wglan0</code> default-deny. If it
-            already exists, touch nothing &mdash; nothing is deleted, recreated, or reconciled, so
-            changing the seeded rules on an existing node means <code>nft delete table inet
-            wglan</code> and a restart. This is a fail-closed starting state for the mesh interface,
-            not a policy engine — the same bar already applied to the <code>JOIN</code>
-            listener itself.
+            Nothing. <code>wglan</code> does not edit nftables at all &mdash; it prints a ruleset
+            (<code>wglan firewall</code>) with your <code>--interface</code> and
+            <code>--control-port</code> filled in, and stops there. No table created at startup,
+            nothing to reconcile, no half-owned state.
           </p>
         </div>
         <div class="split-card config">
-          <div class="who">Config management owns</div>
+          <div class="who">You own</div>
           <p>
-            The actual allow-list, appended into the daemon-created <code>mesh</code> chain — never
-            a separate table. Every node allows 22 for SSH; the HTTPS peer additionally allows 443;
-            and so on. This is exactly the per-node variation Ansible host/group vars are for.
+            The file. <code>wglan firewall &gt; /etc/nftables.d/wglan.conf</code>, then your
+            per-node allow rules in the same <code>mesh</code> chain in the same file. It reloads
+            idempotently, so <code>systemctl restart nftables</code> and a reboot both rebuild the
+            whole thing &mdash; which a table applied at runtime by a daemon does not.
           </p>
         </div>
       </div>
 
-      <pre class="codeblock">table inet wglan {
-  chain input {                <span style="color:var(--muted)">// base chain, hooked at input</span>
+      <pre class="codeblock"><span style="color:var(--muted)">define</span> WGLAN_IFACE = "wglan0"
+<span style="color:var(--muted)">define</span> WGLAN_CONTROL_PORT = 51821
+
+table inet wglan             <span style="color:var(--muted)">// create-delete-define, so a reload</span>
+delete table inet wglan      <span style="color:var(--muted)">// rebuilds atomically, not merges</span>
+
+table inet wglan {
+  chain input {              <span style="color:var(--muted)">// base chain, hooked at input</span>
     type filter hook input priority 0; policy accept;
-    iifname "wglan0" jump mesh
-    iifname "wglan0" drop      <span style="color:var(--muted)">// fail-closed, this interface only</span>
+    iifname $WGLAN_IFACE jump mesh
+    iifname $WGLAN_IFACE drop      <span style="color:var(--muted)">// fail-closed, this interface only</span>
   }
-  chain mesh {                 <span style="color:var(--muted)">// regular chain — the allow-list</span>
+  chain mesh {                     <span style="color:var(--muted)">// regular chain — the allow-list</span>
     ct state established,related accept
-    tcp dport 51821 accept     <span style="color:var(--muted)">// wglan's own control plane</span>
+    tcp dport $WGLAN_CONTROL_PORT accept
     icmp type echo-request accept
-    <span style="color:var(--muted)">tcp dport 22 accept        // appended per node, e.g. via Ansible host_vars</span>
+    <span style="color:var(--muted)">tcp dport 22 accept            // yours, in this same file</span>
   }
 }</pre>
 
       <div class="decision" style="margin-top:0;">
-        <div class="verdict">⚠ draft 1 got this wrong</div>
+        <div class="verdict">⚠ four bugs, all in applying it</div>
         <p style="margin-bottom:0;">
-          Draft 1 was a single base chain with <code>policy drop</code>. That is not a scoped
-          default-deny, it is a total one: every inbound packet traverses every base chain at the
-          hook, a policy cannot be conditioned on an interface, and a drop in any base chain is
-          final no matter what another table accepts. On first startup it drops the operator's SSH
-          session, WireGuard's own UDP 51820, and the control port. The shape above keeps the
-          guarantee and scopes it — and <code>mesh</code> is a <em>regular</em> chain precisely
-          because <code>nft add rule</code> appends: an allow-list and a terminal drop in one chain
-          would be in the wrong order by construction, silently disabling every rule the operator
-          adds. The <code>ct state</code> rule comes first for a reason of the same kind: a
-          default-deny input chain without it breaks every connection the host <em>initiates</em>
-          over the mesh, replies arriving on ephemeral ports nothing allows — including the
-          echo-reply to its own <code>ping</code>. The whole thing goes in as one
-          <code>nft</code> batch, one netlink transaction, because the existence check is on the
-          <em>table</em>: eight separate commands could fail on the fourth, leave a table with no
-          drop rule, and no later start would ever repair it.
+          The daemon used to create this at startup, create-if-missing, and it was wrong four
+          separate times: a base chain at <code>policy drop</code>, which is not a scoped
+          default-deny but a total one, cutting the host off on first start; no conntrack rule, so
+          every connection the host <em>initiated</em> hung and <code>ping</code> worked in one
+          direction only; <code>iif</code> instead of <code>iifname</code>, matching an interface
+          index that decays to nothing when the interface is recreated; and eight sequential
+          <code>nft add</code> calls, so a failure partway left a table with no drop rule that no
+          later start would repair.
+        </p>
+        <p style="margin-bottom:0;">
+          Every one of those was a bug in <em>applying</em> the ruleset, not in the ruleset.
+          Emitting a file removes the class &mdash; and fixes what no amount of care in the daemon
+          could: a runtime-applied table is destroyed by <code>systemctl restart nftables</code>
+          with nothing noticing. The cost is honest and worth stating: it is not on by default, so a
+          node that joins before the file is installed exposes every port it already has bound.
         </p>
       </div>
 

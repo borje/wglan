@@ -79,7 +79,6 @@ func testNode(t *testing.T, key envelope.Key, n int) (*Node, *fakeSys) {
 		t.Fatal(err)
 	}
 	f := newFake()
-	f.fail["nft list table"] = true // table missing, so the skeleton gets created
 	ip := fmt.Sprintf("127.0.0.%d", n)
 	node := &Node{
 		dir: dir,
@@ -289,84 +288,6 @@ func TestEnsureLinkSilentWhenCorrect(t *testing.T) {
 
 // The skeleton must default-deny the mesh interface without taking the host
 // offline, and it must be impossible to leave half-built.
-func TestEnsureFirewallDoesNotLockOutTheHost(t *testing.T) {
-	t.Parallel()
-	f := newFake()
-	f.fail["nft list table"] = true
-	s := &Sys{Run: f.runner, Iface: "wglan0", HostsPath: "/dev/null"}
-	if err := s.EnsureFirewall(51821); err != nil {
-		t.Fatal(err)
-	}
-	// Exactly two invocations: the existence check, then one atomic batch. Seven
-	// separate calls could fail partway and leave a table with no drop rule,
-	// which the table-granularity check above would never repair.
-	calls := f.argv()
-	if len(calls) != 2 {
-		t.Fatalf("want 2 nft invocations (check + one batch), got %d: %v", len(calls), calls)
-	}
-	if len(calls[1]) != 2 {
-		t.Fatalf("the batch must be a single argv element, got %v", calls[1])
-	}
-	batch := calls[1][1]
-
-	lines := strings.Split(batch, "\n")
-	base := ""
-	for _, l := range lines {
-		if strings.HasPrefix(l, "add chain inet wglan input") {
-			base = l
-		}
-	}
-	if base == "" {
-		t.Fatal("no base chain in the batch")
-	}
-	if !strings.Contains(base, "policy accept") {
-		t.Fatalf("base chain is %q — a policy drop here drops LAN SSH and WireGuard's own port", base)
-	}
-	if !strings.Contains(base, "hook input") {
-		t.Fatalf("base chain is not hooked at input: %q", base)
-	}
-
-	// Fail-closed must exist, scoped by interface NAME. `iif` resolves to an
-	// index at load time: it needs wglan0 to exist already and stops matching if
-	// the interface is recreated, which fails open.
-	if strings.Contains(batch, "iif ") {
-		t.Errorf("batch uses `iif` (index-based); want `iifname`:\n%s", batch)
-	}
-	want := []string{
-		`add rule inet wglan mesh ct state established,related accept`,
-		`add rule inet wglan mesh tcp dport 51821 accept`,
-		`add rule inet wglan mesh icmp type echo-request accept`,
-		`add rule inet wglan input iifname "wglan0" jump mesh`,
-		`add rule inet wglan input iifname "wglan0" drop`,
-	}
-	for _, w := range want {
-		if !slices.Contains(lines, w) {
-			t.Errorf("batch is missing %q:\n%s", w, batch)
-		}
-	}
-	// Ordering, all within one chain: conntrack first, and the jump before the
-	// terminal drop. `nft` appends, so a rule after the drop is inert.
-	ct := slices.Index(lines, want[0])
-	jump := slices.Index(lines, want[3])
-	drop := slices.Index(lines, want[4])
-	if ct > jump || jump > drop {
-		t.Errorf("order is ct=%d jump=%d drop=%d, want ascending:\n%s", ct, jump, drop, batch)
-	}
-}
-
-func TestEnsureFirewallLeavesAnExistingTableAlone(t *testing.T) {
-	t.Parallel()
-	f := newFake()
-	f.out["nft list table"] = "table inet wglan {\n}\n"
-	s := &Sys{Run: f.runner, Iface: "wglan0", HostsPath: "/dev/null"}
-	if err := s.EnsureFirewall(51821); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.argv()) != 1 {
-		t.Fatalf("touched an existing table: %v", f.argv())
-	}
-}
-
 func TestSetPeerArgv(t *testing.T) {
 	t.Parallel()
 	f := newFake()
@@ -819,53 +740,4 @@ func pubN(t *testing.T, i int) string {
 		t.Fatal(err)
 	}
 	return pub
-}
-
-func TestNoFirewallTouchesNftablesNotAtAll(t *testing.T) {
-	t.Parallel()
-	n, f := testNode(t, mustKey(t), 1)
-	n.st.Self.NoFirewall = true
-	if err := n.ensureFirewall(); err != nil {
-		t.Fatal(err)
-	}
-	// The presence check is a read, and it is the *only* nft call allowed: no
-	// add, no delete. The flag opts out of managing the firewall, it does not
-	// tear down rules the operator may be relying on.
-	for _, c := range f.argv() {
-		if c[0] != "nft" {
-			continue
-		}
-		if !slices.Equal(c, []string{"nft", "list", "table", "inet", "wglan"}) {
-			t.Errorf("--no-firewall ran %v; only the read-only presence check is permitted", c)
-		}
-	}
-}
-
-func TestFirewallManagedByDefault(t *testing.T) {
-	t.Parallel()
-	n, f := testNode(t, mustKey(t), 1)
-	if err := n.ensureFirewall(); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.find("nft")) < 2 {
-		t.Fatalf("default must create the skeleton, got %v", f.argv())
-	}
-}
-
-// --no-firewall persists, or `wglan run` from a systemd unit would silently
-// re-close an interface the operator deliberately opened.
-func TestNoFirewallPersists(t *testing.T) {
-	t.Parallel()
-	n, _ := testNode(t, mustKey(t), 1)
-	n.st.Self.NoFirewall = true
-	if err := saveState(n.dir, n.st); err != nil {
-		t.Fatal(err)
-	}
-	st, ok, err := loadState(n.dir)
-	if err != nil || !ok {
-		t.Fatalf("ok=%v err=%v", ok, err)
-	}
-	if !st.Self.NoFirewall {
-		t.Fatal("no_firewall did not survive a round trip through peers.json")
-	}
 }

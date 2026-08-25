@@ -3,6 +3,7 @@
 package main
 
 import (
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,6 +20,36 @@ import (
 	"github.com/atvirokodosprendimai/wglan/envelope"
 )
 
+// firewallConf is nftables/wglan.conf, verbatim. Embedded rather than built from
+// a format string so there is exactly one copy of the ruleset: reviewable as
+// nftables, checkable with `nft -c -f`, and impossible to drift from what the
+// binary prints.
+//
+//go:embed nftables/wglan.conf
+var firewallConf string
+
+// The two lines `wglan firewall` rewrites. Named constants so a change to the
+// conf file that breaks the substitution fails loudly instead of silently
+// printing a ruleset that ignores the flags.
+const (
+	defaultIfaceLine = `define WGLAN_IFACE = "wglan0"`
+	defaultPortLine  = `define WGLAN_CONTROL_PORT = 51821`
+)
+
+func renderFirewall(iface string, controlPort int) (string, error) {
+	out := firewallConf
+	for old, want := range map[string]string{
+		defaultIfaceLine: fmt.Sprintf("define WGLAN_IFACE = %q", iface),
+		defaultPortLine:  fmt.Sprintf("define WGLAN_CONTROL_PORT = %d", controlPort),
+	} {
+		if !strings.Contains(out, old) {
+			return "", fmt.Errorf("nftables/wglan.conf no longer contains %q", old)
+		}
+		out = strings.Replace(out, old, want, 1)
+	}
+	return out, nil
+}
+
 const usage = `wglan — a minimal WireGuard mesh for a LAN with no internet access
 
   wglan secret                                  print a fresh wglan://v1/... secret
@@ -29,9 +60,14 @@ const usage = `wglan — a minimal WireGuard mesh for a LAN with no internet acc
   wglan forget PUBKEY                           local removal of one peer
   wglan leave                                   announce departure to every peer
   wglan probe  PUBKEY|HOSTNAME                  mesh-wide reachability tally
+  wglan firewall                                print the nftables skeleton for this node
 
 The secret may be given with --secret, in $WGLAN_SECRET, or read from
 <state-dir>/secret, where join persists it so a reboot needs no operator.
+
+wglan never edits nftables. "wglan firewall" prints a ruleset that default-denies
+the mesh interface; install it where your nftables config is loaded from. Until
+you do, joining exposes every port this host already has bound.
 `
 
 type opts struct {
@@ -45,10 +81,6 @@ type opts struct {
 	hostsFile   string
 	listenPort  int
 	controlPort int
-	noFirewall  bool
-	// set records which flags were given explicitly, so a bool flag can tell
-	// "passed false" from "not passed" and only then override persisted state.
-	set map[string]bool
 }
 
 func main() {
@@ -58,6 +90,18 @@ func main() {
 		os.Exit(2)
 	}
 	cmd := os.Args[1]
+	if cmd == "firewall" {
+		fs := flag.NewFlagSet("wglan firewall", flag.ExitOnError)
+		iface := fs.String("interface", "wglan0", "WireGuard interface name")
+		port := fs.Int("control-port", 51821, "TCP control-plane port")
+		if err := fs.Parse(os.Args[2:]); err != nil {
+			die(err)
+		}
+		out, err := renderFirewall(*iface, *port)
+		die(err)
+		fmt.Print(out)
+		return
+	}
 	if cmd == "secret" {
 		s, err := envelope.NewSecret()
 		if err != nil {
@@ -80,13 +124,9 @@ func main() {
 	fs.StringVar(&o.hostsFile, "hosts-file", "/etc/hosts", "file holding the managed name block")
 	fs.IntVar(&o.listenPort, "listen-port", 51820, "WireGuard UDP data-plane port")
 	fs.IntVar(&o.controlPort, "control-port", 51821, "TCP control-plane port")
-	fs.BoolVar(&o.noFirewall, "no-firewall", false,
-		"do not manage nftables at all; every port on this host becomes reachable over the mesh")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		die(err)
 	}
-	o.set = map[string]bool{}
-	fs.Visit(func(f *flag.Flag) { o.set[f.Name] = true })
 	args := fs.Args()
 
 	n, fresh, err := newNode(cmd, o)
@@ -174,9 +214,6 @@ func newNode(cmd string, o opts) (*Node, bool, error) {
 			return nil, false, err
 		}
 		st.Self.ListenPort, st.Self.ControlPort = o.listenPort, o.controlPort
-		if o.set["no-firewall"] {
-			st.Self.NoFirewall = o.noFirewall
-		}
 	}
 
 	key, err := resolveSecret(o, cmd == "join")
@@ -298,9 +335,6 @@ func (n *Node) bringUp() error {
 	if err := n.sys.EnsureLink(keyPath(n.dir), n.st.Self.MeshIP, n.st.Self.ListenPort); err != nil {
 		return err
 	}
-	if err := n.ensureFirewall(); err != nil {
-		return err
-	}
 	// On restart, reload peers straight into WireGuard rather than bootstrapping.
 	for _, p := range n.st.Peers {
 		if err := n.sys.SetPeer(p); err != nil {
@@ -311,22 +345,6 @@ func (n *Node) bringUp() error {
 		return err
 	}
 	return n.sys.WriteHosts(append(slices.Clone(n.st.Peers), n.self()))
-}
-
-// ensureFirewall honours --no-firewall by doing nothing at all — but says so, and
-// says so again if a skeleton from an earlier run is still closing the interface,
-// since the flag cannot open what it refuses to touch.
-func (n *Node) ensureFirewall() error {
-	if !n.st.Self.NoFirewall {
-		return n.sys.EnsureFirewall(n.st.Self.ControlPort)
-	}
-	log.Printf("--no-firewall: not managing nftables; every port bound on this host is reachable over %s", n.sys.Iface)
-	if n.sys.FirewallPresent() {
-		log.Printf("--no-firewall: WARNING table inet wglan already exists, so %s is still default-deny. "+
-			"Remove it from a console with `nft delete table inet wglan` — that also drops any allow rules you added.",
-			n.sys.Iface)
-	}
-	return nil
 }
 
 // cmdJoin is idempotent: with existing state and no new address or bootstrap

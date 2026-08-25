@@ -363,11 +363,12 @@ wglan sync    IP:PORT                         pull + apply peer-list difference
 wglan forget  PUBKEY                          local removal of one peer
 wglan leave                                   announce departure to every peer
 wglan probe   PUBKEY|HOSTNAME                 mesh-wide reachability tally
+wglan firewall                                print the nftables skeleton for this node
 ```
 
 Also on every subcommand: `--state-dir` (default `/var/lib/wglan`), `--hosts-file` (default
-`/etc/hosts`), `--lan-ip` to override the detected LAN address on a multi-homed host, and
-`--no-firewall` (§12.6). The first two exist so the whole binary is testable without root.
+`/etc/hosts`), and `--lan-ip` to override the detected LAN address on a multi-homed host. The first two exist so
+the whole binary is testable without root.
 
 `join` is idempotent, and precisely: it loads existing state, brings the interface and firewall
 skeleton up to match, and then fans out a `JOIN` **only** if `--bootstrap` was given or `--mesh-ip`
@@ -455,56 +456,8 @@ wg set wglan0 peer <PUBKEY> endpoint <IP:PORT> allowed-ips <MESH_IP>/32 persiste
 wg set wglan0 peer <PUBKEY> remove
 ```
 
-**Firewall skeleton, at startup, create-if-missing only** (§12.5):
-One `nft` invocation, one argv element, one netlink transaction:
-```
-nft 'add table inet wglan
-     add chain inet wglan input { type filter hook input priority 0; policy accept; }
-     add chain inet wglan mesh
-     add rule inet wglan mesh ct state established,related accept
-     add rule inet wglan mesh tcp dport 51821 accept
-     add rule inet wglan mesh icmp type echo-request accept
-     add rule inet wglan input iifname "wglan0" jump mesh
-     add rule inet wglan input iifname "wglan0" drop'
-```
-
-**One batch, not eight commands, because the existence check is on the table.** Eight separate
-`nft add` calls can fail on the fourth and leave a table with no drop rule in it — and a later start
-would see the table, conclude the skeleton exists, and never repair it. A half-built skeleton fails
-*open*, so it must not be reachable at all. `nft` applies a batch whole or not at all; verified by
-feeding it a batch with one bad line and confirming no table exists afterwards.
-
-**`iifname`, not `iif`.** `iif` matches on the interface *index*, resolved at load time: it requires
-`wglan0` to exist already, and it silently stops matching if the interface is deleted and recreated
-with a different index — after which the table still exists, so nothing repairs it, and `wglan0` is
-wide open. `nft -a list` shows the decay directly: an `iif "wglan0"` rule reads back as `iif 2` once
-the interface it referred to is gone. Matching on the name has no ordering dependency and survives a
-re-create.
-
-Draft 1 had one base chain with `policy drop`, which is not a scoped default-deny — it is a total
-one. Every inbound packet traverses every base chain at the hook, a policy cannot be conditioned on
-an interface, and a drop in any base chain is final regardless of what another table accepts. On
-first startup that chain drops the operator's SSH session, WireGuard's own UDP 51820, and the
-control port. Verified, not reasoned about: creating it in a namespace takes `ping 127.0.0.1` from
-working to dropped, and an `accept` in a second table at priority −100 does not rescue it.
-
-The shape above keeps the guarantee and scopes it. `mesh` is a **regular** chain, so the allow rules
-config management appends into it land above the terminal `drop` in `input` — `nft add rule`
-appends, so an allow-list and a terminal drop in the same chain would be in the wrong order by
-construction. Three seeded rules in `mesh`, and the order matters:
-
-1. **`ct state established,related accept`, first.** A default-deny input chain without it breaks
-   every connection this host *initiates* over the mesh: the replies come back on an ephemeral port
-   that no rule allows. It breaks `ping <peer>` too — the request is allowed inbound by rule 3, the
-   echo-*reply* to our own ping is not. `related` also admits ICMP errors, which is what keeps
-   path-MTU discovery working on a 1420-byte tunnel. This was verified in a namespace both ways:
-   without the rule, an outbound `ping` and an outbound TCP connect both hang; with it, both work
-   and an unallowed inbound port is still refused.
-2. **The control port**, because §6.1 requires `LEAVE` and `PROBE` to arrive inside the tunnel and
-   nothing else would ever allow them.
-3. **ICMP echo-request**, so a peer can ping *this* node — the first thing anyone reaches for.
-
-Everything past that is the operator's, appended into `mesh`.
+**Firewall: none.** wglan does not edit nftables. `wglan firewall` prints a ruleset for the
+operator to install; see §12.5.
 
 **Reads for `status`:**
 ```
@@ -568,75 +521,65 @@ revocation list** — identity in a signed cert with a lifetime, so revocation i
 shared secret, which is exactly why deferring it here is defensible and why a half-measure would
 be worse than the honest gap.
 
-### 12.5 Host firewall — split ownership
+### 12.5 Host firewall — one file, one owner
 
 Once a node joins, WireGuard exposes whatever that host already has listening on `0.0.0.0` — not
-just what it was meant to expose. `sshd`'s all-interfaces bind is why SSH just works over the
-mesh with no code involved; a monitoring agent or a stray debug listener is exposed identically,
-with no deliberateness at all.
+just what it was meant to expose. `sshd`'s all-interfaces bind is why SSH just works over the mesh
+with no code involved; a monitoring agent or a stray debug listener is exposed identically, with no
+deliberateness at all.
 
-Two concerns, two owners:
+**wglan ships the ruleset and never applies it.** `wglan firewall` prints `nftables/wglan.conf` with
+its two `define` lines set from `--interface` and `--control-port`:
 
-- **wglan** ensures, at startup, that `table inet wglan` exists with the exact shape in §11:
-  a base chain `input` at `policy accept`, a regular chain `mesh`, and two rules scoping the
-  fail-closed drop to `iif "wglan0"` — **created only if the table is missing.** If it exists,
-  wglan touches nothing. Beyond conntrack, its own control port and ICMP echo it never inspects
-  ports, services, or peers.
-- **Config management appends the allow rules into the `mesh` chain**, e.g.
-  `nft add rule inet wglan mesh tcp dport 22 accept`. Not a separate table: two independently-owned
-  tables both hooked at `input` need their relative priorities primed correctly for an ACCEPT in one
-  to take effect before a DROP in the other, which is a real footgun and easy to get silently
-  wrong. One chain, top-to-bottom, first match wins, is much harder to break — and putting the
-  allow-list in a chain the terminal drop jumps *into* is what keeps append-ordering from silently
-  disabling every rule the operator adds.
-- **Scope by interface name, not by IP — and not by interface index.** `iifname "wglan0"` needs
-  neither the address nor the interface to exist yet, so there is no ordering dependency between
-  skeleton creation, rule insertion, and the join. `iif` would not deliver that: it resolves to an
-  index at load time (see §11). It is exactly as precise as scoping by mesh subnet, since nothing but WireGuard-decrypted
-  peer traffic can ever arrive on `wglan0`. (With static addressing the mesh IP *is* known ahead
-  of time and could be used — interface scoping is still preferred because it survives a
-  renumber.)
-- **The allow-list is per-node** — every node allows 22, the HTTPS node also allows 443 — and
-  belongs in host vars next to `mesh_ip`, not in the daemon.
+```
+wglan firewall > /etc/nftables.d/wglan.conf
+nft -c -f /etc/nftables.d/wglan.conf     # check before committing to it
+nft -f    /etc/nftables.d/wglan.conf
+```
 
-**Existing rules are never touched: not deleted, not recreated, not reconciled.** The check is
-`nft list table inet wglan`, and if the table is there wglan returns immediately. Nothing is ever
-removed, so an operator's allow-list is safe across any number of restarts — and equally, a table
-that is *wrong* stays wrong. Two consequences worth stating plainly:
+The file is a `table inet wglan` with a base chain at `policy accept`, two rules scoping the
+fail-closed drop to `iifname $WGLAN_IFACE`, and a regular `mesh` chain holding the allow-list:
+conntrack first, then the control port, then ICMP echo, then whatever this node serves. It reloads
+idempotently (`table` / `delete table` / `table`) and rebuilds atomically.
 
-- **Upgrading wglan does not upgrade the skeleton.** A node whose table was created by an earlier
-  build keeps that build's ruleset. Picking up a change to the seeded rules is a deliberate act:
-  `nft delete table inet wglan`, then restart. Do it from a console, not over the mesh.
-- **nftables is not persistent across a reboot.** wglan's own skeleton comes back on the next start;
-  the operator's appended rules do not, unless they live in `/etc/nftables.conf` or config
-  management. That asymmetry is the argument for keeping the allow-list in config management rather
-  than typing it once.
+An earlier draft had the daemon create this at startup, create-if-missing. That was wrong in four
+separate ways, and the pattern in the mistakes is what settles the question:
 
-No drift detection beyond the fail-closed skeleton. Which ports get allowed is operator
-discipline; only the guarantee that *nothing* is allowed until something explicitly says otherwise
-is built in.
+- A base chain at `policy drop`, which is not a scoped default-deny but a total one — first startup
+  cut the host off entirely.
+- No conntrack rule, so every connection the host *initiated* over the mesh hung, `ping <peer>`
+  included.
+- `iif` rather than `iifname`, matching an interface index that decays to nothing when the interface
+  is recreated — failing open, with no path to repair since the check was on the table's existence.
+- Eight sequential `nft add` calls, so a failure partway left a table with no drop rule in it, and
+  every later start concluded the skeleton was already there.
 
-### 12.6 `--no-firewall`
+Each was a bug in *managing host state that belongs to someone else*, not in the ruleset. Emitting
+the file removes the class:
 
-The escape hatch, for a lab where the point is that everything is reachable and the default-deny
-skeleton is in the way.
+- **It survives.** A runtime-applied table is destroyed by `systemctl restart nftables` with nothing
+  noticing, and by a reboot; a file in the nftables config is reloaded by both.
+- **One owner.** The per-node allow rules go in the same `mesh` chain in the same file, so a reload
+  rebuilds the whole thing rather than leaving wglan's half in place and the operator's gone. The
+  split-ownership footgun disappears instead of being managed.
+- **Reviewable.** It is nftables, diffable, and `nft -c -f` checks it. Three of the four bugs above
+  lived inside a Go format string where nothing could see them.
+- **Nothing to reconcile.** No create-if-missing, no drift detection, no half-built state, no
+  question about what an upgrade does to an existing node.
 
-`--no-firewall` means **wglan does not manage nftables at all**: no table, no chains, no rules, and
-nothing removed either. Every port bound on the host — on `0.0.0.0` or on the mesh address — is
-reachable from every member, which is precisely §12.5's problem, deliberately accepted.
+What it costs, stated plainly: **it is not on by default.** A node that joins before the file is
+installed exposes every port it already has bound. That is the trade — a default-deny the daemon
+could not apply correctly, against a correct one somebody has to install.
 
-Three properties it deliberately has:
+**Scope by interface name, not by IP — and not by index.** `iifname "wglan0"` needs neither the
+address nor the interface to exist yet, so the file can be loaded before wglan ever runs, and it
+stays correct across a renumber.
 
-- **It persists.** The value is recorded in `peers.json` as `no_firewall`, so `wglan run` from a
-  systemd unit does not silently re-close an interface the operator opened. Passing the flag on a
-  later `join` is what changes it back — a bool flag is only honoured when it is explicitly given,
-  so its absence never overrides the file.
-- **It never deletes.** Turning it on with `table inet wglan` already present does not open anything:
-  wglan refuses to tear down rules an operator may be relying on. It logs a warning naming the exact
-  command (`nft delete table inet wglan`) and notes that running it drops the allow-list too. The
-  one nftables call the flag permits is the read-only presence check behind that warning.
-- **It is loud.** One line every start, so a host that is wide open by choice never looks like a host
-  that is wide open by accident.
+**The input hook is not the whole story.** The chain gates host processes. A container port published
+with `-p` is DNAT'd in `prerouting` and *forwarded*, never delivered to `input`, so it bypasses this
+file entirely — verified. Gate those in Docker's `DOCKER-USER` forward chain, or give the container
+host networking and allow the port here. No ruleset hooked at `input` can cover that case, so the
+file says so in a comment rather than implying a guarantee it does not have.
 
 ## 13. Threat model
 
@@ -650,7 +593,7 @@ Three properties it deliberately has:
 | Pre-auth resource exhaustion | 4KB framed read inbound · 3s deadlines · connection semaphore · **per-IP rate limit before the decrypt attempt**. | A LAN-local flood can still deny joins while it runs. Joins are rare and manual; accepted. |
 | Parser oracle | A failed open is the only rejection reachable pre-auth, and it is uniform. Structurally stronger than ordered hand-written checks: GCM failure carries no field-level detail to leak. | None. |
 | Injection via a wire field into `wg`/`ip`/`/etc/hosts` | Strict per-field validation as a precondition, plus argv-array `exec` exclusively. | None. |
-| A member reaches a service this host never meant to expose | The `wglan0` skeleton is default-deny (§12.5). | **Nothing, under `--no-firewall`** (§12.6). That is the flag's whole purpose; it logs its state every start so the exposure is never a surprise. |
+| A member reaches a service this host never meant to expose | Not mitigated by the daemon. `wglan firewall` emits a default-deny ruleset for `wglan0`, but installing it is the operator's act (§12.5). | **Accepted, and worth being honest about:** a node that joins before the file is installed exposes every port already bound on it. Container ports published with `-p` bypass the file even when it is installed, being forwarded rather than delivered to `input`. |
 | **A member forges a `LEAVE` to evict a healthy node** | Honoured only inside the tunnel, from the departing peer's own mesh address, so cryptokey routing binds the message to its sender before any code runs. A `LEAVE` naming someone else is dropped. Two checks, not one: the connection must have been accepted on *our* mesh address (so it arrived on `wglan0`, not the LAN), and its source must be the mesh address recorded for the pubkey named. | None from this path. Same binding on `PROBE`. |
 | **A member moves an existing peer's address onto its own pubkey** — the interception case, not the squatting one | The duplicate check has no exemption for known pubkeys (§3.3, §3.4): a `JOIN` whose `mesh_ip` or `hostname` is held by a different pubkey is rejected and logged, naming both. | None from this path. The cost is that renumbering into an address a dead peer still holds needs a `forget` first. |
 | **A member forges an unclaimed address for itself** | Not mitigated. Any holder of the secret can seal a `JOIN` claiming any *free* in-subnet address for its own pubkey. | **Accepted, consistent with the model**: membership is total and permanent by design. Deterministic addressing would allow verifying `mesh_ip == derive(pubkey, secret)`; static addressing forecloses that permanently. The substitute is loud change-logging (§9.2), which cannot prevent the forgery but makes it impossible to miss. |
@@ -731,13 +674,20 @@ where it belongs above; this is the index, so nothing looks like an undocumented
 
 | # | Draft 1 | Draft 2 | Where |
 |---|---|---|---|
-| 1 | `nft` skeleton was one base chain with `policy drop` | Base chain `policy accept`, drop scoped to `iif "wglan0"`, allow-list in a regular chain the drop jumps into. Draft 1's version cut the host off entirely | §11, §12.5 |
+| 1 | `nft` skeleton was one base chain with `policy drop`, created by the daemon | Base chain `policy accept`, drop scoped to `iifname`, allow-list in a regular chain the drop jumps into — and shipped as a file the operator installs rather than applied at startup. Draft 1's version cut the host off entirely | §12.5 |
 | 2 | One 4096-byte frame cap, `peers` capped at 256 | Two caps: 4096 inbound, 262144 on a reply we asked for. 4096 held ~20 peers | §4.2 |
 | 3 | A known pubkey was exempt from the duplicate checks | Exempt only against its own current values; collision with any *other* pubkey is still rejected. The exemption was an interception primitive | §3.3, §3.4, §13 |
 | 4 | `--control-port` existed but was on neither the wire nor the peer record | `control_port` is a payload field and a peer field | §4.3, §10 |
-| 5 | Nothing ever allowed tcp/51821 on `wglan0`, so in-tunnel `LEAVE` could not arrive | wglan seeds its own control port and ICMP echo into the `mesh` chain | §11, §12.5 |
+| 5 | Nothing ever allowed tcp/51821 on `wglan0`, so in-tunnel `LEAVE` could not arrive | The shipped ruleset allows the control port and ICMP echo | §12.5 |
 | 6 | No nonce cache, because "`JOIN` is idempotent" | Seen-set, because §3.4 made `JOIN` last-writer-wins — draft 1's own stated trigger | §4.4, §13 |
 | 7 | Stale required transfer counters "since the last check", which nothing stored | Stale is handshake age past 180s; keepalives make it sufficient. Counters are printed | §8, §9.1 |
 | 8 | `peers[]` validation was implied; `lan_endpoint` was taken on trust | `peers[]` validated identically, one bad entry rejects the message; a direct `JOIN`'s endpoint host comes from the observed source address | §4.3, §13 |
 | 9 | `sync` was to travel inside the tunnel "for free"; `probe` was "a `sync` that reports" | `sync` runs outside the tunnel; `probe` is its own message pair carrying liveness | §7, §13, §16 |
 | 10 | The secret had nowhere to live, so `run` could not start after a reboot | `<state-dir>/secret`, written by `join` | §9, §10 |
+
+**Since draft 2.** Three further firewall defects surfaced during implementation — no conntrack rule
+(every outbound connection hung), `iif` instead of `iifname` (failed open on interface re-create),
+and non-atomic creation (a partial skeleton was unrepairable). All three were bugs in *applying* the
+ruleset rather than in the ruleset itself. wglan no longer edits nftables at all: it emits
+`nftables/wglan.conf` for the operator to install (§12.5). The `--no-firewall` flag that briefly
+existed to opt out of the daemon's editing is gone with it.
