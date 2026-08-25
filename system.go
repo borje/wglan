@@ -140,6 +140,14 @@ func (s *Sys) RemovePeer(pubkey string) error {
 	return err
 }
 
+// RemoveLink deletes the mesh interface. Called only after `leave` has fully
+// announced departure to every reachable peer. wglan never touches nftables
+// (see "wglan firewall"), so there is no firewall state to remove here.
+func (s *Sys) RemoveLink() error {
+	_, err := s.Run("ip", "link", "delete", "dev", s.Iface)
+	return err
+}
+
 // Show returns the output of `wg show <if> <what>`.
 func (s *Sys) Show(what string) (string, error) {
 	out, err := s.Run("wg", "show", s.Iface, what)

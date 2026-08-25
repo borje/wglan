@@ -320,6 +320,26 @@ func TestSetPeerArgv(t *testing.T) {
 	}
 }
 
+// `wglan leave` deletes the interface after its fan-out, and never touches
+// nftables — wglan doesn't manage it any more (SPEC §6, §12).
+func TestRemoveLinkArgv(t *testing.T) {
+	t.Parallel()
+	f := newFake()
+	s := &Sys{Run: f.runner, Iface: "wglan0", HostsPath: "/dev/null"}
+	if err := s.RemoveLink(); err != nil {
+		t.Fatal(err)
+	}
+	got := f.argv()
+	if len(got) != 1 || !slices.Equal(got[0], []string{"ip", "link", "delete", "dev", "wglan0"}) {
+		t.Fatalf("argv\n got %q\nwant [[ip link delete dev wglan0]]", got)
+	}
+	for _, c := range got {
+		if c[0] == "nft" {
+			t.Errorf("leave touched nftables: %v", c)
+		}
+	}
+}
+
 // ---------------------------------------------------------------- merge rules
 
 func TestMergeRules(t *testing.T) {

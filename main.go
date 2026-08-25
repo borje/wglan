@@ -58,7 +58,7 @@ const usage = `wglan — a minimal WireGuard mesh for a LAN with no internet acc
   wglan status                                  per-peer view, with stale marking
   wglan sync   IP:PORT                          pull + apply peer-list difference
   wglan forget PUBKEY                           local removal of one peer
-  wglan leave                                   announce departure to every peer
+  wglan leave                                   announce departure to every peer, then remove the interface
   wglan probe  PUBKEY|HOSTNAME                  mesh-wide reachability tally
   wglan firewall                                print the nftables skeleton for this node
 
@@ -153,6 +153,7 @@ func main() {
 		die(n.forget(args[0]))
 	case "leave":
 		n.announceLeave()
+		die(n.sys.RemoveLink())
 	case "probe":
 		if len(args) != 1 {
 			die(errors.New("usage: wglan probe PUBKEY|HOSTNAME"))

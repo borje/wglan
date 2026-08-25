@@ -272,6 +272,14 @@ leaving was `forget` on all N−1 others.
 **`LEAVE` is not sent from a shutdown hook.** A node stopping to reboot has not left the mesh, and
 making every restart announce a departure turns the common case into the rare case's message.
 
+**After the fan-out completes, `wglan leave` deletes its own mesh interface.** Not the firewall —
+wglan never touches nftables (§12), so there is nothing of its own to remove there. The interface
+is deleted unconditionally, whether or not every peer was reachable: an unreachable peer already
+falls to row three of the table above (detected, not acted on), and that outcome doesn't change
+because a *different* peer left cleanly. Deletion happens strictly after the fan-out, never
+interleaved with it — `LEAVE` is bound to the tunnel (§6.1), so tearing the interface down mid-loop
+would break every send after the first, silencing exactly the peers still waiting to hear.
+
 ### 6.1 Required constraint
 
 **A `LEAVE` is honoured only when it arrives inside the tunnel, from the mesh address owned by the
@@ -361,7 +369,7 @@ wglan run                                     serve the control listener from pe
 wglan status                                  per-peer view, with stale marking
 wglan sync    IP:PORT                         pull + apply peer-list difference
 wglan forget  PUBKEY                          local removal of one peer
-wglan leave                                   announce departure to every peer
+wglan leave                                   announce departure to every peer, then remove the interface
 wglan probe   PUBKEY|HOSTNAME                 mesh-wide reachability tally
 wglan firewall                                print the nftables skeleton for this node
 ```
