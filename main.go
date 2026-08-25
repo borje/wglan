@@ -45,6 +45,10 @@ type opts struct {
 	hostsFile   string
 	listenPort  int
 	controlPort int
+	noFirewall  bool
+	// set records which flags were given explicitly, so a bool flag can tell
+	// "passed false" from "not passed" and only then override persisted state.
+	set map[string]bool
 }
 
 func main() {
@@ -76,9 +80,13 @@ func main() {
 	fs.StringVar(&o.hostsFile, "hosts-file", "/etc/hosts", "file holding the managed name block")
 	fs.IntVar(&o.listenPort, "listen-port", 51820, "WireGuard UDP data-plane port")
 	fs.IntVar(&o.controlPort, "control-port", 51821, "TCP control-plane port")
+	fs.BoolVar(&o.noFirewall, "no-firewall", false,
+		"do not manage nftables at all; every port on this host becomes reachable over the mesh")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		die(err)
 	}
+	o.set = map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { o.set[f.Name] = true })
 	args := fs.Args()
 
 	n, fresh, err := newNode(cmd, o)
@@ -166,6 +174,9 @@ func newNode(cmd string, o opts) (*Node, bool, error) {
 			return nil, false, err
 		}
 		st.Self.ListenPort, st.Self.ControlPort = o.listenPort, o.controlPort
+		if o.set["no-firewall"] {
+			st.Self.NoFirewall = o.noFirewall
+		}
 	}
 
 	key, err := resolveSecret(o, cmd == "join")
@@ -287,7 +298,7 @@ func (n *Node) bringUp() error {
 	if err := n.sys.EnsureLink(keyPath(n.dir), n.st.Self.MeshIP, n.st.Self.ListenPort); err != nil {
 		return err
 	}
-	if err := n.sys.EnsureFirewall(n.st.Self.ControlPort); err != nil {
+	if err := n.ensureFirewall(); err != nil {
 		return err
 	}
 	// On restart, reload peers straight into WireGuard rather than bootstrapping.
@@ -300,6 +311,22 @@ func (n *Node) bringUp() error {
 		return err
 	}
 	return n.sys.WriteHosts(append(slices.Clone(n.st.Peers), n.self()))
+}
+
+// ensureFirewall honours --no-firewall by doing nothing at all — but says so, and
+// says so again if a skeleton from an earlier run is still closing the interface,
+// since the flag cannot open what it refuses to touch.
+func (n *Node) ensureFirewall() error {
+	if !n.st.Self.NoFirewall {
+		return n.sys.EnsureFirewall(n.st.Self.ControlPort)
+	}
+	log.Printf("--no-firewall: not managing nftables; every port bound on this host is reachable over %s", n.sys.Iface)
+	if n.sys.FirewallPresent() {
+		log.Printf("--no-firewall: WARNING table inet wglan already exists, so %s is still default-deny. "+
+			"Remove it from a console with `nft delete table inet wglan` — that also drops any allow rules you added.",
+			n.sys.Iface)
+	}
+	return nil
 }
 
 // cmdJoin is idempotent: with existing state and no new address or bootstrap

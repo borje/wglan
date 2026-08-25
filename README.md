@@ -34,7 +34,8 @@ The second command is the entire mesh. The third is the only one you repeat.
 - **Zero dependencies.** `crypto/hkdf`, `crypto/ecdh` and AES-GCM are stdlib as of Go 1.24; the
   binary shells out to `wg`, `ip`, and `nft` exactly as `wg-quick` does.
 - **A fail-closed firewall skeleton, scoped to the mesh interface.** `wglan0` is default-deny until
-  your config management says otherwise; nothing else on the host is touched.
+  your config management says otherwise; nothing else on the host is touched. `--no-firewall` opts
+  out entirely for a lab where everything should just be reachable.
 
 ## What you don't
 

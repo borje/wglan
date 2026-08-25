@@ -820,3 +820,52 @@ func pubN(t *testing.T, i int) string {
 	}
 	return pub
 }
+
+func TestNoFirewallTouchesNftablesNotAtAll(t *testing.T) {
+	t.Parallel()
+	n, f := testNode(t, mustKey(t), 1)
+	n.st.Self.NoFirewall = true
+	if err := n.ensureFirewall(); err != nil {
+		t.Fatal(err)
+	}
+	// The presence check is a read, and it is the *only* nft call allowed: no
+	// add, no delete. The flag opts out of managing the firewall, it does not
+	// tear down rules the operator may be relying on.
+	for _, c := range f.argv() {
+		if c[0] != "nft" {
+			continue
+		}
+		if !slices.Equal(c, []string{"nft", "list", "table", "inet", "wglan"}) {
+			t.Errorf("--no-firewall ran %v; only the read-only presence check is permitted", c)
+		}
+	}
+}
+
+func TestFirewallManagedByDefault(t *testing.T) {
+	t.Parallel()
+	n, f := testNode(t, mustKey(t), 1)
+	if err := n.ensureFirewall(); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.find("nft")) < 2 {
+		t.Fatalf("default must create the skeleton, got %v", f.argv())
+	}
+}
+
+// --no-firewall persists, or `wglan run` from a systemd unit would silently
+// re-close an interface the operator deliberately opened.
+func TestNoFirewallPersists(t *testing.T) {
+	t.Parallel()
+	n, _ := testNode(t, mustKey(t), 1)
+	n.st.Self.NoFirewall = true
+	if err := saveState(n.dir, n.st); err != nil {
+		t.Fatal(err)
+	}
+	st, ok, err := loadState(n.dir)
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if !st.Self.NoFirewall {
+		t.Fatal("no_firewall did not survive a round trip through peers.json")
+	}
+}

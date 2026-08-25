@@ -167,6 +167,14 @@ add rule inet wglan input iifname %q drop`, controlPort, s.Iface, s.Iface)
 	return nil
 }
 
+// FirewallPresent reports whether the table is there. Read-only: used to warn
+// when --no-firewall cannot deliver what it promises because a skeleton from an
+// earlier run is still in force.
+func (s *Sys) FirewallPresent() bool {
+	_, err := s.Run("nft", "list", "table", "inet", "wglan")
+	return err == nil
+}
+
 // SetPeer adds or updates one peer. One invocation, no full-config rewrite.
 func (s *Sys) SetPeer(p envelope.Peer) error {
 	_, err := s.Run("wg", "set", s.Iface,

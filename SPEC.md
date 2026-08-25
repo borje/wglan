@@ -366,8 +366,8 @@ wglan probe   PUBKEY|HOSTNAME                 mesh-wide reachability tally
 ```
 
 Also on every subcommand: `--state-dir` (default `/var/lib/wglan`), `--hosts-file` (default
-`/etc/hosts`), and `--lan-ip` to override the detected LAN address on a multi-homed host. The first
-two exist so the whole binary is testable without root.
+`/etc/hosts`), `--lan-ip` to override the detected LAN address on a multi-homed host, and
+`--no-firewall` (§12.6). The first two exist so the whole binary is testable without root.
 
 `join` is idempotent, and precisely: it loads existing state, brings the interface and firewall
 skeleton up to match, and then fans out a `JOIN` **only** if `--bootstrap` was given or `--mesh-ip`
@@ -616,6 +616,28 @@ No drift detection beyond the fail-closed skeleton. Which ports get allowed is o
 discipline; only the guarantee that *nothing* is allowed until something explicitly says otherwise
 is built in.
 
+### 12.6 `--no-firewall`
+
+The escape hatch, for a lab where the point is that everything is reachable and the default-deny
+skeleton is in the way.
+
+`--no-firewall` means **wglan does not manage nftables at all**: no table, no chains, no rules, and
+nothing removed either. Every port bound on the host — on `0.0.0.0` or on the mesh address — is
+reachable from every member, which is precisely §12.5's problem, deliberately accepted.
+
+Three properties it deliberately has:
+
+- **It persists.** The value is recorded in `peers.json` as `no_firewall`, so `wglan run` from a
+  systemd unit does not silently re-close an interface the operator opened. Passing the flag on a
+  later `join` is what changes it back — a bool flag is only honoured when it is explicitly given,
+  so its absence never overrides the file.
+- **It never deletes.** Turning it on with `table inet wglan` already present does not open anything:
+  wglan refuses to tear down rules an operator may be relying on. It logs a warning naming the exact
+  command (`nft delete table inet wglan`) and notes that running it drops the allow-list too. The
+  one nftables call the flag permits is the read-only presence check behind that warning.
+- **It is loud.** One line every start, so a host that is wide open by choice never looks like a host
+  that is wide open by accident.
+
 ## 13. Threat model
 
 | Threat | Mitigation | Residual |
@@ -628,6 +650,7 @@ is built in.
 | Pre-auth resource exhaustion | 4KB framed read inbound · 3s deadlines · connection semaphore · **per-IP rate limit before the decrypt attempt**. | A LAN-local flood can still deny joins while it runs. Joins are rare and manual; accepted. |
 | Parser oracle | A failed open is the only rejection reachable pre-auth, and it is uniform. Structurally stronger than ordered hand-written checks: GCM failure carries no field-level detail to leak. | None. |
 | Injection via a wire field into `wg`/`ip`/`/etc/hosts` | Strict per-field validation as a precondition, plus argv-array `exec` exclusively. | None. |
+| A member reaches a service this host never meant to expose | The `wglan0` skeleton is default-deny (§12.5). | **Nothing, under `--no-firewall`** (§12.6). That is the flag's whole purpose; it logs its state every start so the exposure is never a surprise. |
 | **A member forges a `LEAVE` to evict a healthy node** | Honoured only inside the tunnel, from the departing peer's own mesh address, so cryptokey routing binds the message to its sender before any code runs. A `LEAVE` naming someone else is dropped. Two checks, not one: the connection must have been accepted on *our* mesh address (so it arrived on `wglan0`, not the LAN), and its source must be the mesh address recorded for the pubkey named. | None from this path. Same binding on `PROBE`. |
 | **A member moves an existing peer's address onto its own pubkey** — the interception case, not the squatting one | The duplicate check has no exemption for known pubkeys (§3.3, §3.4): a `JOIN` whose `mesh_ip` or `hostname` is held by a different pubkey is rejected and logged, naming both. | None from this path. The cost is that renumbering into an address a dead peer still holds needs a `forget` first. |
 | **A member forges an unclaimed address for itself** | Not mitigated. Any holder of the secret can seal a `JOIN` claiming any *free* in-subnet address for its own pubkey. | **Accepted, consistent with the model**: membership is total and permanent by design. Deterministic addressing would allow verifying `mesh_ip == derive(pubkey, secret)`; static addressing forecloses that permanently. The substitute is loud change-logging (§9.2), which cannot prevent the forgery but makes it impossible to miss. |

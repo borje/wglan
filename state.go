@@ -19,6 +19,9 @@ type Self struct {
 	MeshIP      string `json:"mesh_ip"`
 	ListenPort  int    `json:"listen_port"`
 	ControlPort int    `json:"control_port"`
+	// NoFirewall persists --no-firewall, so `run` after a reboot does not
+	// silently re-close an interface the operator deliberately opened.
+	NoFirewall bool `json:"no_firewall,omitempty"`
 }
 
 // State is the whole of /var/lib/wglan/peers.json.
@@ -105,7 +108,14 @@ func compareIP(a, b string) int {
 
 // writeFileAtomic writes via a temp file in the same directory, fsync, rename,
 // then fsyncs the directory so the rename itself is durable.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
+	// Name the destination in every failure: the raw error reports the temp file,
+	// and "open /etc/hosts.tmp850427619: permission denied" tells nobody anything.
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("write %s: %w", path, err)
+		}
+	}()
 	dir := filepath.Dir(path)
 	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp")
 	if err != nil {
