@@ -287,8 +287,8 @@ func TestEnsureLinkSilentWhenCorrect(t *testing.T) {
 	}
 }
 
-// The base chain must be policy ACCEPT with the drop scoped to the mesh
-// interface. A base chain with policy drop would take the whole host offline.
+// The skeleton must default-deny the mesh interface without taking the host
+// offline, and it must be impossible to leave half-built.
 func TestEnsureFirewallDoesNotLockOutTheHost(t *testing.T) {
 	t.Parallel()
 	f := newFake()
@@ -297,68 +297,60 @@ func TestEnsureFirewallDoesNotLockOutTheHost(t *testing.T) {
 	if err := s.EnsureFirewall(51821); err != nil {
 		t.Fatal(err)
 	}
-	var base []string
-	for _, c := range f.argv() {
-		if len(c) > 4 && c[1] == "add" && c[2] == "chain" && slices.Contains(c, "hook") {
-			t.Fatalf("chain spec should be one argv element, got %v", c)
-		}
-		if len(c) >= 6 && c[1] == "add" && c[2] == "chain" && c[5] == "input" {
-			base = c
-		}
+	// Exactly two invocations: the existence check, then one atomic batch. Seven
+	// separate calls could fail partway and leave a table with no drop rule,
+	// which the table-granularity check above would never repair.
+	calls := f.argv()
+	if len(calls) != 2 {
+		t.Fatalf("want 2 nft invocations (check + one batch), got %d: %v", len(calls), calls)
 	}
-	if base == nil {
-		t.Fatal("no base chain created")
+	if len(calls[1]) != 2 {
+		t.Fatalf("the batch must be a single argv element, got %v", calls[1])
 	}
-	spec := base[len(base)-1]
-	if !strings.Contains(spec, "policy accept") {
-		t.Fatalf("base chain is %q — a policy drop here drops LAN SSH and WireGuard's own port", spec)
-	}
-	if !strings.Contains(spec, "hook input") {
-		t.Fatalf("base chain is not hooked at input: %q", spec)
-	}
-	// Fail-closed must still exist, scoped to the interface, after the jump.
-	jump := f.find("nft", "add", "rule", "inet", "wglan", "input", "iif", "wglan0", "jump", "mesh")
-	drop := f.find("nft", "add", "rule", "inet", "wglan", "input", "iif", "wglan0", "drop")
-	if len(jump) != 1 || len(drop) != 1 {
-		t.Fatalf("want one scoped jump and one scoped drop, got %d/%d", len(jump), len(drop))
-	}
-	// Without a conntrack rule a default-deny input chain breaks every connection
-	// this host initiates over the mesh — including the echo-reply to its own
-	// ping. It must come first in the chain, ahead of the port rules.
-	ctRule := f.find("nft", "add", "rule", "inet", "wglan", "mesh", "ct", "state", "established,related", "accept")
-	if len(ctRule) != 1 {
-		t.Fatal("no `ct state established,related accept` rule: outbound connections over the mesh would hang")
-	}
-	var firstMesh []string
-	for _, c := range f.argv() {
-		if len(c) > 5 && c[1] == "add" && c[2] == "rule" && c[5] == "mesh" {
-			firstMesh = c
-			break
+	batch := calls[1][1]
+
+	lines := strings.Split(batch, "\n")
+	base := ""
+	for _, l := range lines {
+		if strings.HasPrefix(l, "add chain inet wglan input") {
+			base = l
 		}
 	}
-	if !slices.Contains(firstMesh, "ct") {
-		t.Errorf("first rule in the mesh chain is %v, want the conntrack rule", firstMesh)
+	if base == "" {
+		t.Fatal("no base chain in the batch")
 	}
-	// wglan's own control port and ICMP echo live in the operator-owned chain, so
-	// in-tunnel LEAVE/PROBE and inbound `ping` work out of the box.
-	if len(f.find("nft", "add", "rule", "inet", "wglan", "mesh", "tcp", "dport", "51821", "accept")) != 1 {
-		t.Error("control port not allowed on the mesh interface")
+	if !strings.Contains(base, "policy accept") {
+		t.Fatalf("base chain is %q — a policy drop here drops LAN SSH and WireGuard's own port", base)
 	}
-	if len(f.find("nft", "add", "rule", "inet", "wglan", "mesh", "icmp", "type", "echo-request", "accept")) != 1 {
-		t.Error("icmp echo not allowed on the mesh interface")
+	if !strings.Contains(base, "hook input") {
+		t.Fatalf("base chain is not hooked at input: %q", base)
 	}
-	// Ordering: the jump must precede the drop.
-	var jumpAt, dropAt int
-	for i, c := range f.argv() {
-		if slices.Contains(c, "jump") {
-			jumpAt = i
+
+	// Fail-closed must exist, scoped by interface NAME. `iif` resolves to an
+	// index at load time: it needs wglan0 to exist already and stops matching if
+	// the interface is recreated, which fails open.
+	if strings.Contains(batch, "iif ") {
+		t.Errorf("batch uses `iif` (index-based); want `iifname`:\n%s", batch)
+	}
+	want := []string{
+		`add rule inet wglan mesh ct state established,related accept`,
+		`add rule inet wglan mesh tcp dport 51821 accept`,
+		`add rule inet wglan mesh icmp type echo-request accept`,
+		`add rule inet wglan input iifname "wglan0" jump mesh`,
+		`add rule inet wglan input iifname "wglan0" drop`,
+	}
+	for _, w := range want {
+		if !slices.Contains(lines, w) {
+			t.Errorf("batch is missing %q:\n%s", w, batch)
 		}
-		if len(c) > 0 && c[len(c)-1] == "drop" {
-			dropAt = i
-		}
 	}
-	if jumpAt > dropAt {
-		t.Error("terminal drop was inserted before the jump")
+	// Ordering, all within one chain: conntrack first, and the jump before the
+	// terminal drop. `nft` appends, so a rule after the drop is inert.
+	ct := slices.Index(lines, want[0])
+	jump := slices.Index(lines, want[3])
+	drop := slices.Index(lines, want[4])
+	if ct > jump || jump > drop {
+		t.Errorf("order is ct=%d jump=%d drop=%d, want ascending:\n%s", ct, jump, drop, batch)
 	}
 }
 

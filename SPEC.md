@@ -456,16 +456,30 @@ wg set wglan0 peer <PUBKEY> remove
 ```
 
 **Firewall skeleton, at startup, create-if-missing only** (§12.5):
+One `nft` invocation, one argv element, one netlink transaction:
 ```
-nft add table inet wglan
-nft add chain inet wglan input '{ type filter hook input priority 0; policy accept; }'
-nft add chain inet wglan mesh
-nft add rule  inet wglan mesh  ct state established,related accept
-nft add rule  inet wglan mesh  tcp dport 51821 accept
-nft add rule  inet wglan mesh  icmp type echo-request accept
-nft add rule  inet wglan input iif "wglan0" jump mesh
-nft add rule  inet wglan input iif "wglan0" drop
+nft 'add table inet wglan
+     add chain inet wglan input { type filter hook input priority 0; policy accept; }
+     add chain inet wglan mesh
+     add rule inet wglan mesh ct state established,related accept
+     add rule inet wglan mesh tcp dport 51821 accept
+     add rule inet wglan mesh icmp type echo-request accept
+     add rule inet wglan input iifname "wglan0" jump mesh
+     add rule inet wglan input iifname "wglan0" drop'
 ```
+
+**One batch, not eight commands, because the existence check is on the table.** Eight separate
+`nft add` calls can fail on the fourth and leave a table with no drop rule in it — and a later start
+would see the table, conclude the skeleton exists, and never repair it. A half-built skeleton fails
+*open*, so it must not be reachable at all. `nft` applies a batch whole or not at all; verified by
+feeding it a batch with one bad line and confirming no table exists afterwards.
+
+**`iifname`, not `iif`.** `iif` matches on the interface *index*, resolved at load time: it requires
+`wglan0` to exist already, and it silently stops matching if the interface is deleted and recreated
+with a different index — after which the table still exists, so nothing repairs it, and `wglan0` is
+wide open. `nft -a list` shows the decay directly: an `iif "wglan0"` rule reads back as `iif 2` once
+the interface it referred to is gone. Matching on the name has no ordering dependency and survives a
+re-create.
 
 Draft 1 had one base chain with `policy drop`, which is not a scoped default-deny — it is a total
 one. Every inbound packet traverses every base chain at the hook, a policy cannot be conditioned on
@@ -477,7 +491,7 @@ working to dropped, and an `accept` in a second table at priority −100 does no
 The shape above keeps the guarantee and scopes it. `mesh` is a **regular** chain, so the allow rules
 config management appends into it land above the terminal `drop` in `input` — `nft add rule`
 appends, so an allow-list and a terminal drop in the same chain would be in the wrong order by
-construction. Three seeded rules, and the order matters:
+construction. Three seeded rules in `mesh`, and the order matters:
 
 1. **`ct state established,related accept`, first.** A default-deny input chain without it breaks
    every connection this host *initiates* over the mesh: the replies come back on an ephemeral port
@@ -575,14 +589,28 @@ Two concerns, two owners:
   wrong. One chain, top-to-bottom, first match wins, is much harder to break — and putting the
   allow-list in a chain the terminal drop jumps *into* is what keeps append-ordering from silently
   disabling every rule the operator adds.
-- **Scope by interface, not by IP.** `iif "wglan0"` needs neither the address nor the interface to
-  exist yet, so there is no ordering dependency between skeleton creation, rule insertion, and the
-  join. It is exactly as precise as scoping by mesh subnet, since nothing but WireGuard-decrypted
+- **Scope by interface name, not by IP — and not by interface index.** `iifname "wglan0"` needs
+  neither the address nor the interface to exist yet, so there is no ordering dependency between
+  skeleton creation, rule insertion, and the join. `iif` would not deliver that: it resolves to an
+  index at load time (see §11). It is exactly as precise as scoping by mesh subnet, since nothing but WireGuard-decrypted
   peer traffic can ever arrive on `wglan0`. (With static addressing the mesh IP *is* known ahead
   of time and could be used — interface scoping is still preferred because it survives a
   renumber.)
 - **The allow-list is per-node** — every node allows 22, the HTTPS node also allows 443 — and
   belongs in host vars next to `mesh_ip`, not in the daemon.
+
+**Existing rules are never touched: not deleted, not recreated, not reconciled.** The check is
+`nft list table inet wglan`, and if the table is there wglan returns immediately. Nothing is ever
+removed, so an operator's allow-list is safe across any number of restarts — and equally, a table
+that is *wrong* stays wrong. Two consequences worth stating plainly:
+
+- **Upgrading wglan does not upgrade the skeleton.** A node whose table was created by an earlier
+  build keeps that build's ruleset. Picking up a change to the seeded rules is a deliberate act:
+  `nft delete table inet wglan`, then restart. Do it from a console, not over the mesh.
+- **nftables is not persistent across a reboot.** wglan's own skeleton comes back on the next start;
+  the operator's appended rules do not, unless they live in `/etc/nftables.conf` or config
+  management. That asymmetry is the argument for keeping the allow-list in config management rather
+  than typing it once.
 
 No drift detection beyond the fail-closed skeleton. Which ports get allowed is operator
 discipline; only the guarantee that *nothing* is allowed until something explicitly says otherwise

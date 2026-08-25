@@ -958,8 +958,10 @@ node7 (10.90.0.7): reachable from <span style="color:var(--data)">10/11</span> p
             One idempotent check at startup: does <code>table inet wglan</code> exist? If not,
             create it in the exact shape below — a base chain that accepts by default, and two
             rules that make <code>wglan0</code> and only <code>wglan0</code> default-deny. If it
-            already exists, touch nothing. This is a fail-closed starting state for the mesh
-            interface, not a policy engine — the same bar already applied to the <code>JOIN</code>
+            already exists, touch nothing &mdash; nothing is deleted, recreated, or reconciled, so
+            changing the seeded rules on an existing node means <code>nft delete table inet
+            wglan</code> and a restart. This is a fail-closed starting state for the mesh interface,
+            not a policy engine — the same bar already applied to the <code>JOIN</code>
             listener itself.
           </p>
         </div>
@@ -976,8 +978,8 @@ node7 (10.90.0.7): reachable from <span style="color:var(--data)">10/11</span> p
       <pre class="codeblock">table inet wglan {
   chain input {                <span style="color:var(--muted)">// base chain, hooked at input</span>
     type filter hook input priority 0; policy accept;
-    iif "wglan0" jump mesh
-    iif "wglan0" drop          <span style="color:var(--muted)">// fail-closed, this interface only</span>
+    iifname "wglan0" jump mesh
+    iifname "wglan0" drop      <span style="color:var(--muted)">// fail-closed, this interface only</span>
   }
   chain mesh {                 <span style="color:var(--muted)">// regular chain — the allow-list</span>
     ct state established,related accept
@@ -1001,12 +1003,18 @@ node7 (10.90.0.7): reachable from <span style="color:var(--data)">10/11</span> p
           adds. The <code>ct state</code> rule comes first for a reason of the same kind: a
           default-deny input chain without it breaks every connection the host <em>initiates</em>
           over the mesh, replies arriving on ephemeral ports nothing allows — including the
-          echo-reply to its own <code>ping</code>.
+          echo-reply to its own <code>ping</code>. The whole thing goes in as one
+          <code>nft</code> batch, one netlink transaction, because the existence check is on the
+          <em>table</em>: eight separate commands could fail on the fourth, leave a table with no
+          drop rule, and no later start would ever repair it.
         </p>
       </div>
 
       <p class="dek" style="margin-bottom:0;">
-        Scoped by <strong>interface</strong> (<code>iif "wglan0"</code>), not by IP. With static
+        Scoped by <strong>interface name</strong> (<code>iifname "wglan0"</code>), not by IP &mdash;
+        and not by interface <em>index</em>: <code>iif</code> resolves to an index at load time, so it
+        needs <code>wglan0</code> to exist already and quietly stops matching if the interface is
+        ever recreated, which fails open. With static
         addressing the mesh IP <em>is</em> known ahead of time, so this is no longer forced —
         it's still preferred, for two reasons: <code>iif "wglan0"</code> needs neither the address
         nor the interface to exist yet, so there's no ordering dependency between the skeleton,

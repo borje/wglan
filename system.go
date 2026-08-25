@@ -138,27 +138,30 @@ func (s *Sys) EnsureFirewall(controlPort int) error {
 	if _, err := s.Run("nft", "list", "table", "inet", "wglan"); err == nil {
 		return nil // operator-owned from here on
 	}
-	cmds := [][]string{
-		{"add", "table", "inet", "wglan"},
-		{"add", "chain", "inet", "wglan", "input", "{ type filter hook input priority 0; policy accept; }"},
-		{"add", "chain", "inet", "wglan", "mesh"},
-		// First, and load-bearing: a default-deny input chain with no conntrack
-		// rule breaks every connection this host *initiates* over the mesh, since
-		// the replies arrive on ephemeral ports nothing allows. It also breaks
-		// `ping <peer>` — the echo-request is allowed inbound below, but the
-		// echo-reply to our own ping is not. `related` additionally lets ICMP
-		// errors through, which is what keeps path-MTU discovery working on a
-		// 1420-byte tunnel.
-		{"add", "rule", "inet", "wglan", "mesh", "ct", "state", "established,related", "accept"},
-		{"add", "rule", "inet", "wglan", "mesh", "tcp", "dport", strconv.Itoa(controlPort), "accept"},
-		{"add", "rule", "inet", "wglan", "mesh", "icmp", "type", "echo-request", "accept"},
-		{"add", "rule", "inet", "wglan", "input", "iif", s.Iface, "jump", "mesh"},
-		{"add", "rule", "inet", "wglan", "input", "iif", s.Iface, "drop"},
-	}
-	for _, c := range cmds {
-		if _, err := s.Run("nft", c...); err != nil {
-			return err
-		}
+	// One batch, one argv element, one netlink transaction: nft applies it whole
+	// or not at all. Seven separate `nft add` calls could fail on the fourth and
+	// leave a table with no drop rule in it — and because the check above is on
+	// the *table*, no later start would ever repair that. A half-built skeleton
+	// fails open, so it must not be reachable.
+	//
+	// `iifname`, not `iif`: `iif` resolves to an interface index at load time, so
+	// it requires wglan0 to already exist and silently stops matching if the
+	// interface is ever deleted and recreated with a different index. Matching on
+	// the name has no ordering dependency and survives a re-create.
+	//
+	// `ct state established,related` comes first and is load-bearing: without it
+	// a default-deny input chain drops the replies to every connection this host
+	// initiates over the mesh, including the echo-reply to its own ping.
+	batch := fmt.Sprintf(`add table inet wglan
+add chain inet wglan input { type filter hook input priority 0; policy accept; }
+add chain inet wglan mesh
+add rule inet wglan mesh ct state established,related accept
+add rule inet wglan mesh tcp dport %d accept
+add rule inet wglan mesh icmp type echo-request accept
+add rule inet wglan input iifname %q jump mesh
+add rule inet wglan input iifname %q drop`, controlPort, s.Iface, s.Iface)
+	if _, err := s.Run("nft", batch); err != nil {
+		return err
 	}
 	log.Printf("created nftables table inet wglan: %s is default-deny except established traffic, tcp/%d and icmp echo", s.Iface, controlPort)
 	return nil
