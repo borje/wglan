@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 610" role="img"
+  aria-label="Three-node WireGuard mesh. node1, node2, and node3 are connected by direct WireGuard tunnels forming a full mesh. The tunnels were established by node2 sending a one-time JOIN request to node1, node3 sending a one-time JOIN request to node1, and node3 then sending a JOIN directly to node2 using the peer list learned from node1 -- so every pair ends up connected after two bootstrap requests and one direct greeting.">
+  <title>wglan architecture -- three-node mesh: WireGuard data plane and the one-time TCP join sequence that builds it</title>
+
+  <style>
+    .bg{ fill:#eef1f3; }
+    .box{ fill:#ffffff; stroke:#c3ccd2; stroke-width:1.5; }
+    .dockerbox{ fill:#e4e9ec; stroke:#5b6b78; stroke-width:1.25; stroke-dasharray:4 3; }
+    .divider{ stroke:#c3ccd2; stroke-width:1; }
+    .tunnel{ stroke:#1a7566; stroke-width:3; fill:none; stroke-linecap:round; }
+    .joinpath{ stroke:#a85a17; stroke-width:2; fill:none; stroke-dasharray:6 5; }
+    .joinnum-bg{ fill:#a85a17; }
+    .joinnum-text{ fill:#ffffff; }
+    text{ font-family:ui-monospace, "IBM Plex Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+    .label-header{ font-size:12px; letter-spacing:0.07em; text-transform:uppercase; fill:#5b6b78; }
+    .label-identity{ font-size:16px; font-weight:600; fill:#1c2733; }
+    .label-row{ font-size:12.5px; fill:#5b6b78; }
+    .label-docker-tag{ font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; fill:#5b6b78; }
+    .label-docker-name{ font-size:13.5px; font-weight:600; fill:#1c2733; }
+    .label-callout{ font-size:12px; font-style:italic; fill:#1a7566; }
+    .joinnum-text{ font-size:12px; font-weight:700; }
+
+    @media (prefers-color-scheme: dark){
+      .bg{ fill:#10161c; }
+      .box{ fill:#182028; stroke:#2c3944; }
+      .dockerbox{ fill:#1f2a33; stroke:#8fa0ac; }
+      .divider{ stroke:#2c3944; }
+      .tunnel{ stroke:#4fd8c4; }
+      .joinpath{ stroke:#f0a662; }
+      .joinnum-bg{ fill:#f0a662; }
+      .joinnum-text{ fill:#10161c; }
+      .label-header{ fill:#8fa0ac; }
+      .label-identity{ fill:#e8edf1; }
+      .label-row{ fill:#8fa0ac; }
+      .label-docker-tag{ fill:#8fa0ac; }
+      .label-docker-name{ fill:#e8edf1; }
+      .label-callout{ fill:#4fd8c4; }
+    }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1000" height="610"></rect>
+
+  <defs>
+    <marker id="arrowControl" viewBox="0 0 10 10" refX="8" refY="5"
+      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" class="joinnum-bg"></path>
+    </marker>
+  </defs>
+
+  <!-- tunnels (data plane) -->
+  <path class="tunnel" d="M420,190 L340,340"></path>
+  <path class="tunnel" d="M580,190 L660,340"></path>
+  <path class="tunnel" d="M380,445 L620,445"></path>
+
+  <!-- callout on the node1-node2 tunnel -->
+  <text class="label-callout" x="392" y="272">reaches https://node2.mesh</text>
+
+  <!-- join control-plane paths -->
+  <path class="joinpath" d="M340,340 Q300,258 420,190" marker-end="url(#arrowControl)"></path>
+  <path class="joinpath" d="M660,340 Q700,258 580,190" marker-end="url(#arrowControl)"></path>
+  <path class="joinpath" d="M620,445 Q500,393 380,445" marker-end="url(#arrowControl)"></path>
+
+  <circle class="joinnum-bg" cx="300" cy="258" r="11"></circle>
+  <text class="joinnum-text" x="300" y="262" text-anchor="middle">1</text>
+
+  <circle class="joinnum-bg" cx="700" cy="258" r="11"></circle>
+  <text class="joinnum-text" x="700" y="262" text-anchor="middle">2</text>
+
+  <circle class="joinnum-bg" cx="500" cy="393" r="11"></circle>
+  <text class="joinnum-text" x="500" y="397" text-anchor="middle">3</text>
+
+  <!-- node1 -->
+  <rect class="box" x="380" y="40" width="240" height="150" rx="3"></rect>
+  <text class="label-header" x="500" y="66" text-anchor="middle">node1</text>
+  <text class="label-identity" x="500" y="90" text-anchor="middle">node1.mesh &#183; 10.90.0.1</text>
+  <line class="divider" x1="400" y1="104" x2="600" y2="104"></line>
+  <text class="label-row" x="400" y="124">wglan0 &#183; UDP 51820</text>
+  <text class="label-row" x="400" y="144">join listener &#183; TCP 7946 (idle)</text>
+  <text class="label-row" x="400" y="164">peers.json (persisted)</text>
+
+  <!-- node2 -->
+  <rect class="box" x="60" y="340" width="320" height="210" rx="3"></rect>
+  <text class="label-header" x="220" y="366" text-anchor="middle">node2</text>
+  <text class="label-identity" x="220" y="390" text-anchor="middle">node2.mesh &#183; 10.90.0.2</text>
+  <line class="divider" x1="80" y1="404" x2="360" y2="404"></line>
+  <text class="label-row" x="80" y="424">wglan0 &#183; UDP 51820</text>
+  <text class="label-row" x="80" y="444">join listener &#183; TCP 7946 (idle)</text>
+  <rect class="dockerbox" x="80" y="460" width="260" height="68" rx="3"></rect>
+  <text class="label-docker-tag" x="94" y="478">docker</text>
+  <text class="label-docker-name" x="94" y="498">nginx</text>
+  <text class="label-row" x="94" y="516">-p 10.90.0.2:443:443</text>
+
+  <!-- node3 -->
+  <rect class="box" x="620" y="340" width="320" height="210" rx="3"></rect>
+  <text class="label-header" x="780" y="366" text-anchor="middle">node3</text>
+  <text class="label-identity" x="780" y="390" text-anchor="middle">node3.mesh &#183; 10.90.0.3</text>
+  <line class="divider" x1="640" y1="404" x2="920" y2="404"></line>
+  <text class="label-row" x="640" y="424">wglan0 &#183; UDP 51820</text>
+  <text class="label-row" x="640" y="444">join listener &#183; TCP 7946 (idle)</text>
+  <text class="label-row" x="640" y="464">peers.json (persisted)</text>
+</svg>

@@ -1,0 +1,1046 @@
+<title>wglan Field Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#eef1f3;
+    --surface:#ffffff;
+    --surface-2:#e4e9ec;
+    --ink:#1c2733;
+    --muted:#5b6b78;
+    --line:#c3ccd2;
+    --data:#1a7566;
+    --control:#a85a17;
+    --font-sans:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10161c; --surface:#182028; --surface-2:#1f2a33;
+      --ink:#e8edf1; --muted:#8fa0ac; --line:#2c3944;
+      --data:#4fd8c4; --control:#f0a662;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10161c; --surface:#182028; --surface-2:#1f2a33;
+    --ink:#e8edf1; --muted:#8fa0ac; --line:#2c3944;
+    --data:#4fd8c4; --control:#f0a662;
+  }
+
+  *{ box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--font-sans); -webkit-font-smoothing:antialiased;
+  }
+  code, .mono{ font-family:var(--font-mono); }
+
+  .shell{ display:flex; max-width:1180px; margin:0 auto; }
+
+  nav.toc{
+    flex:0 0 200px;
+    position:sticky; top:0; align-self:flex-start;
+    padding:56px 20px 40px 24px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  nav.toc .brand{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--control); margin-bottom:14px;
+  }
+  nav.toc a{
+    color:var(--muted); text-decoration:none; font-size:14px;
+    padding:7px 10px; border-radius:4px; border-left:2px solid transparent;
+  }
+  nav.toc a:hover{ color:var(--ink); background:var(--surface-2); }
+
+  main{ flex:1; min-width:0; padding:56px 32px 100px 8px; }
+
+  .doc-header{ max-width:66ch; margin-bottom:44px; }
+  .doc-header h1{
+    margin:0 0 10px; font-size:clamp(30px,4vw,40px); font-weight:700;
+    letter-spacing:-0.01em; text-wrap:balance;
+  }
+  .doc-header p{ margin:0; color:var(--muted); font-size:16px; line-height:1.6; }
+
+  section{ padding-top:64px; scroll-margin-top:24px; }
+  section:first-of-type{ padding-top:0; }
+  section > .eyebrow{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--control); margin-bottom:8px;
+  }
+  section > h2{
+    margin:0 0 8px; font-size:26px; font-weight:700; letter-spacing:-0.01em;
+  }
+  section > .dek{ margin:0 0 32px; max-width:64ch; color:var(--muted); font-size:15px; line-height:1.6; }
+
+  hr.rule{ border:none; border-top:1px solid var(--line); margin:64px 0 0; }
+
+  /* Features */
+  .feature-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr));
+    gap:14px;
+  }
+  .feature-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:6px;
+    padding:16px 18px;
+  }
+  .feature-card h3{
+    margin:0 0 6px; font-size:14.5px; font-weight:600;
+  }
+  .feature-card p{ margin:0; font-size:13px; color:var(--muted); line-height:1.5; }
+
+  .cut-list{
+    margin-top:28px; background:var(--surface-2); border:1px dashed var(--muted);
+    border-radius:6px; padding:18px 20px;
+  }
+  .cut-list h3{
+    margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:0.05em;
+    color:var(--muted); font-weight:600;
+  }
+  .cut-list ul{ margin:0; padding-left:18px; font-size:13.5px; color:var(--ink); line-height:1.7; }
+  .cut-list li strong{ font-weight:600; }
+
+  /* Use cases */
+  .usecases{ display:flex; flex-direction:column; gap:16px; }
+  .usecase{
+    display:grid; grid-template-columns:36px 1fr; gap:14px;
+    background:var(--surface); border:1px solid var(--line); border-radius:6px;
+    padding:18px 20px;
+  }
+  .usecase .num{
+    font-family:var(--font-mono); font-weight:700; font-size:14px;
+    color:var(--control);
+  }
+  .usecase h3{ margin:0 0 4px; font-size:15.5px; font-weight:600; }
+  .usecase p{ margin:0; font-size:13.5px; color:var(--muted); line-height:1.6; }
+  .usecase .fit{
+    margin-top:8px; font-size:12.5px; color:var(--data); font-family:var(--font-mono);
+  }
+
+  /* Sequences */
+  figure{ margin:0 0 52px; }
+  figure:last-child{ margin-bottom:0; }
+  .diagram-frame{
+    background:var(--surface); border:1px solid var(--line); border-radius:4px;
+    padding:8px; overflow-x:auto;
+  }
+  svg.seq{ display:block; width:100%; height:auto; }
+  .seq text{ font-family:var(--font-mono); fill:currentColor; }
+  .seq .lifeline{ stroke:var(--line); stroke-width:1.5; stroke-dasharray:3 4; }
+  .seq .actorbox{ fill:var(--surface); stroke:var(--line); stroke-width:1.5; }
+  .seq .actorlabel{ font-size:13px; font-weight:600; fill:var(--ink); }
+  .seq .msg-control{ stroke:var(--control); stroke-width:2; fill:none; }
+  .seq .msg-control-dashed{ stroke:var(--control); stroke-width:2; fill:none; stroke-dasharray:5 4; }
+  .seq .msg-data{ stroke:var(--data); stroke-width:2.5; fill:none; }
+  .seq .msg-data-dashed{ stroke:var(--data); stroke-width:2.5; fill:none; stroke-dasharray:5 4; }
+  .seq .msg-label{ font-size:11px; fill:var(--ink); }
+  .seq .note{ font-size:11.5px; font-style:italic; fill:var(--muted); }
+  .seq .divider{ stroke:var(--line); stroke-width:1; }
+  .seq .divider-label{ font-size:10.5px; letter-spacing:0.05em; text-transform:uppercase; fill:var(--muted); }
+  .seq .closing{ font-size:12.5px; font-weight:600; fill:var(--ink); }
+  .seq .step{ fill:var(--control); }
+  .seq .step-data{ fill:var(--data); }
+  .seq .step-num{ fill:var(--surface); font-weight:700; font-size:10px; }
+  .seq .mk-solid-control path{ fill:var(--control); stroke:var(--control); }
+  .seq .mk-open-control path{ fill:none; stroke:var(--control); stroke-width:1.6; }
+  .seq .mk-solid-data path{ fill:var(--data); stroke:var(--data); }
+  .seq .mk-open-data path{ fill:none; stroke:var(--data); stroke-width:1.6; }
+
+  figcaption{ margin-top:12px; max-width:70ch; color:var(--muted); font-size:13.5px; line-height:1.55; }
+
+  /* Exposing services */
+  .svc-table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  .svc-table th{
+    text-align:left; font-family:var(--font-mono); font-size:11px; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--muted); font-weight:600; padding:8px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .svc-table td{ padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--muted); }
+  .svc-table tr:last-child td{ border-bottom:none; }
+  .svc-table td:first-child{ font-family:var(--font-mono); font-weight:600; color:var(--ink); white-space:nowrap; }
+  .svc-table td:nth-child(2){ font-family:var(--font-mono); font-size:12.5px; white-space:nowrap; }
+
+  .table-wrap{ overflow-x:auto; }
+  .wide-table{ width:100%; border-collapse:collapse; font-size:13px; min-width:520px; }
+  .wide-table th{
+    text-align:left; font-family:var(--font-mono); font-size:11px; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--muted); font-weight:600; padding:8px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .wide-table td{
+    padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top;
+    color:var(--muted); line-height:1.55;
+  }
+  .wide-table tr:last-child td{ border-bottom:none; }
+  .wide-table td strong{ color:var(--ink); font-weight:600; }
+  .wide-table code{ font-size:12px; }
+  .wide-table td.fname{ font-family:var(--font-mono); font-weight:600; color:var(--ink); white-space:nowrap; }
+  .wide-table tr.residual td{ background:var(--surface-2); }
+  .none{ color:var(--data); font-family:var(--font-mono); font-size:12px; }
+
+  .decision{ margin-top:28px; }
+  .decision .verdict{
+    display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono);
+    font-size:11.5px; letter-spacing:0.05em; text-transform:uppercase; font-weight:700;
+    color:var(--data); margin-bottom:10px;
+  }
+  .decision p{ font-size:13.5px; color:var(--muted); line-height:1.6; max-width:68ch; }
+
+  /* Host firewall */
+  .split-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
+  .split-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:18px 20px;
+  }
+  .split-card .who{
+    font-family:var(--font-mono); font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    font-weight:700; margin-bottom:8px;
+  }
+  .split-card.daemon .who{ color:var(--data); }
+  .split-card.config .who{ color:var(--control); }
+  .split-card p{ margin:0; font-size:13.5px; color:var(--muted); line-height:1.6; }
+  .split-card code{ font-size:12.5px; }
+
+  pre.codeblock{
+    margin:0 0 24px; background:var(--surface); border:1px solid var(--line); border-radius:6px;
+    padding:16px 18px; overflow-x:auto; font-family:var(--font-mono); font-size:12.5px;
+    line-height:1.6; color:var(--ink);
+  }
+
+  @media (max-width:640px){
+    .split-grid{ grid-template-columns:1fr; }
+  }
+
+  footer{
+    border-top:1px solid var(--line); margin-top:80px; padding-top:20px;
+    font-size:12.5px; color:var(--muted); font-family:var(--font-mono);
+  }
+
+  @media (max-width:820px){
+    .shell{ flex-direction:column; }
+    nav.toc{ position:static; flex-direction:row; overflow-x:auto; padding:24px 20px; gap:10px; }
+    nav.toc .brand{ display:none; }
+    main{ padding:8px 20px 80px; }
+  }
+</style>
+
+<div class="shell">
+  <nav class="toc" aria-label="Sections">
+    <div class="brand">wglan</div>
+    <a href="#features">Features</a>
+    <a href="#usecases">Use cases</a>
+    <a href="#sequences">Sequences</a>
+    <a href="#wire">Wire format</a>
+    <a href="#departure">Departure &amp; death</a>
+    <a href="#exposing">Exposing services</a>
+    <a href="#firewall">Host firewall</a>
+    <a href="#bootc">Bootc &amp; Quadlets</a>
+  </nav>
+
+  <main>
+    <div class="doc-header">
+      <h1>wglan field guide</h1>
+      <p>
+        A reference for colleagues evaluating the design: what it does, where it fits, and exactly
+        how a node joins, restarts, departs, and reaches a peer's service. The normative version is
+        <a href="../SPEC.md">SPEC.md</a>; this document is the argument, not the contract.
+        References to <em>wgmesh</em> throughout are to the larger mesh daemon this design was cut
+        down from — cited as prior art, and as evidence for the choices that go against it.
+      </p>
+    </div>
+
+    <section id="features">
+      <div class="eyebrow">01 · Features</div>
+      <h2>What it does</h2>
+      <p class="dek">Every feature below exists because a real requirement demanded it — nothing is speculative.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <h3>Shared-secret join</h3>
+          <p>One secret to join the mesh. No accounts, no control-plane login, no server to trust. The secret derives the envelope key — sealing a message <em>is</em> the proof of membership, so there is no token to carry.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Operator-chosen subnet</h3>
+          <p>You pick the mesh subnet once, checked against what your LAN already routes — not a random <code>10.x.y.0/16</code> a key derivation function picked blind.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Static addressing</h3>
+          <p><code>--mesh-ip 10.90.0.3/24</code> per host, from the inventory you already keep. No assignment protocol means no address two nodes can disagree about.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Full mesh from one bootstrap IP</h3>
+          <p>Point a new node at any one existing member. Every pair ends up directly peered — proven by induction, not gossip.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Zero ongoing background logic</h3>
+          <p>The daemon is an idle listener. No reconcile loop, no beacon, no timers running in steady state.</p>
+        </div>
+        <div class="feature-card">
+          <h3>WireGuard-native liveness</h3>
+          <p>Endpoint drift and reachability ride on WireGuard's own roaming + <code>PersistentKeepalive</code> — no custom protocol.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Symmetric join and leave</h3>
+          <p>One command joins and propagates mesh-wide; <code>leave</code> departs the same way. Liveness is detected and reported, never auto-evicted.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Survives a reboot</h3>
+          <p>The peer list persists locally. A restart reloads it directly and never re-bootstraps.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Human-readable names</h3>
+          <p>Writes <code>&lt;node&gt;.mesh</code> entries into <code>/etc/hosts</code> — real FQDNs, no DNS service to run.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Small enough to read in one sitting</h3>
+          <p>Standalone Go binary, shells out to <code>wg</code>/<code>ip</code>, no library dependency beyond WireGuard itself.</p>
+        </div>
+      </div>
+
+      <div class="cut-list">
+        <h3>By design, not by omission</h3>
+        <ul>
+          <li><strong>No revocation</strong> — membership is "knows the secret," permanently. Excluding a node is a <em>flag day</em>, not a command: every node's envelope key comes from the secret, so old- and new-secret nodes can't exchange anything, and the mesh is partitioned until every kept node is rotated. wgmesh looks like it solves this — <code>rotate-secret</code>, a signed announcement, grace-period machinery — but the command builds the announcement and drops it (<code>_ = announcement</code>) and prints the same manual steps. Nebula is the real exception: identity in a signed cert with a lifetime, so revocation is "let it lapse." If the requirement ever appears, that's the answer — short-lived certs, not a revocation list.</li>
+          <li><strong>No automatic eviction</strong> — a peer that stops answering is marked stale in <code>status</code>, never removed on its own and never reported to other nodes. See Departure &amp; death for why broadcasting one node's opinion is the dangerous part.</li>
+          <li><strong>No DHT, no internet-facing discovery</strong> — LAN and one bootstrap IP only. This is what makes the offline claim actually true.</li>
+          <li><strong>No ACLs, mobile clients, GUI, or IPv6</strong> — not requirements for this design; not built.</li>
+        </ul>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="usecases">
+      <div class="eyebrow">02 · Use cases</div>
+      <h2>Where it fits</h2>
+      <p class="dek">Scenarios this design was shaped around — not a generic feature checklist.</p>
+
+      <div class="usecases">
+        <div class="usecase">
+          <div class="num">01</div>
+          <div>
+            <h3>Home-lab service mesh</h3>
+            <p>A handful of self-hosted boxes on one LAN, each running Docker services the others need to reach by name over an encrypted tunnel — without exposing anything on the LAN itself.</p>
+            <div class="fit">fits because: static addressing + <code>/etc/hosts</code> naming, zero reverse proxy needed</div>
+          </div>
+        </div>
+        <div class="usecase">
+          <div class="num">02</div>
+          <div>
+            <h3>Air-gapped internal network</h3>
+            <p>A lab or industrial network with no internet access at all. Needs encrypted node-to-node connectivity with nothing external to fail against.</p>
+            <div class="fit">fits because: no DHT, no rendezvous server, no bootstrap dependency outside the LAN</div>
+          </div>
+        </div>
+        <div class="usecase">
+          <div class="num">03</div>
+          <div>
+            <h3>Slow, deliberate onboarding</h3>
+            <p>Roughly one new machine a day, not a fleet churning constantly. A single join command with one bootstrap IP beats maintaining a registry or running a beacon.</p>
+            <div class="fit">fits because: no reconcile loop, no revocation machinery, low-churn by design</div>
+          </div>
+        </div>
+        <div class="usecase">
+          <div class="num">04</div>
+          <div>
+            <h3>Reboot-resilient nodes</h3>
+            <p>A node reboots for a kernel update or power blip. It should rejoin on its own from what it already knew, not wait on an operator to re-run a join command.</p>
+            <div class="fit">fits because: persisted peer list, restart skips bootstrapping entirely</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="sequences">
+      <div class="eyebrow">03 · Sequences</div>
+      <h2>How it actually happens</h2>
+      <p class="dek">
+        <span class="mono" style="color:var(--control)">amber</span> is the one-time TCP control
+        exchange that builds the mesh; <span class="mono" style="color:var(--data)">teal</span>
+        is ordinary encrypted traffic once it's built.
+      </p>
+
+      <figure>
+        <div class="diagram-frame">
+          <svg class="seq" viewBox="0 0 960 400" role="img"
+            aria-label="Sequence diagram: node2 joins by sending a sealed JOIN to node1 and is added immediately; node3 joins by sending a sealed JOIN to node1, receives node1's peer list containing node2, then sends a sealed JOIN directly to node2. After these three JOIN exchanges, node1, node2 and node3 are fully meshed. Each node already holds its own mesh address from local configuration; the exchange only teaches nodes about each other.">
+            <title>Join sequence — two nodes joining a one-node mesh</title>
+
+            <defs>
+              <marker id="fg-arrow-solid" class="mk-solid-control" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 Z"></path>
+              </marker>
+              <marker id="fg-arrow-open" class="mk-open-control" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L9,5 L0,10"></path>
+              </marker>
+            </defs>
+
+            <rect class="actorbox" x="100" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="170" y="37" text-anchor="middle">node1</text>
+            <rect class="actorbox" x="410" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="480" y="37" text-anchor="middle">node2</text>
+            <rect class="actorbox" x="720" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="790" y="37" text-anchor="middle">node3</text>
+
+            <line class="lifeline" x1="170" y1="50" x2="170" y2="358"></line>
+            <line class="lifeline" x1="480" y1="50" x2="480" y2="358"></line>
+            <line class="lifeline" x1="790" y1="50" x2="790" y2="358"></line>
+
+            <text class="msg-label" x="325" y="72" text-anchor="middle">① JOIN · sealed envelope</text>
+            <path class="msg-control" d="M480,80 L170,80" marker-end="url(#fg-arrow-solid)"></path>
+            <circle class="step" cx="170" cy="80" r="9"></circle>
+            <text class="step-num" x="170" y="84" text-anchor="middle">1</text>
+            <text class="note" x="185" y="100">open envelope → add node2 as WireGuard peer</text>
+
+            <text class="msg-label" x="325" y="114" text-anchor="middle">reply · {self info, peers: []}</text>
+            <path class="msg-control-dashed" d="M170,122 L480,122" marker-end="url(#fg-arrow-open)"></path>
+            <text class="note" x="495" y="140">add node1 · own ip .2</text>
+
+            <line class="divider" x1="40" y1="164" x2="920" y2="164"></line>
+            <text class="divider-label" x="480" y="159" text-anchor="middle">node3 appears</text>
+
+            <text class="msg-label" x="480" y="187" text-anchor="middle">② JOIN · sealed envelope</text>
+            <path class="msg-control" d="M790,195 L170,195" marker-end="url(#fg-arrow-solid)"></path>
+            <circle class="step" cx="170" cy="195" r="9"></circle>
+            <text class="step-num" x="170" y="199" text-anchor="middle">2</text>
+            <text class="note" x="185" y="215">open → add node3 · known peers = [node2]</text>
+
+            <text class="msg-label" x="480" y="229" text-anchor="middle">reply · {self info, peers: [node2]}</text>
+            <path class="msg-control-dashed" d="M170,237 L790,237" marker-end="url(#fg-arrow-open)"></path>
+            <text class="note" x="805" y="255">add node1 · own ip .3</text>
+
+            <text class="msg-label" x="635" y="269" text-anchor="middle">③ JOIN · sealed envelope</text>
+            <path class="msg-control" d="M790,277 L480,277" marker-end="url(#fg-arrow-solid)"></path>
+            <circle class="step" cx="480" cy="277" r="9"></circle>
+            <text class="step-num" x="480" y="281" text-anchor="middle">3</text>
+            <text class="note" x="495" y="297">open → add node3 as peer</text>
+
+            <text class="msg-label" x="635" y="311" text-anchor="middle">reply · {self info, peers: [node1]}</text>
+            <path class="msg-control-dashed" d="M480,319 L790,319" marker-end="url(#fg-arrow-open)"></path>
+
+            <text class="closing" x="480" y="348" text-anchor="middle">full mesh: node1 ↔ node2 ↔ node3 — no server, no DHT, no gossip round</text>
+          </svg>
+        </div>
+        <figcaption>
+          Every arrow is the same sealed <code>JOIN</code> message. node3's third message isn't a
+          special case — it's the identical request, sent because node1's reply told node3
+          that node2 exists. That's the entire propagation mechanism. Note what is <em>not</em>
+          happening: no address is negotiated here. Each node already holds its own mesh address
+          from local config before it sends anything; the reply only teaches it who else exists.
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="diagram-frame">
+          <svg class="seq" viewBox="0 0 640 260" role="img"
+            aria-label="Sequence diagram: node2 restarts, reads its persisted peer list, applies it to WireGuard directly, and starts listening — with zero JOIN requests sent to anyone.">
+            <title>Restart sequence — rejoining from persisted state</title>
+
+            <rect class="actorbox" x="250" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="320" y="37" text-anchor="middle">node2 (daemon)</text>
+            <line class="lifeline" x1="320" y1="50" x2="320" y2="215"></line>
+
+            <circle class="step" cx="320" cy="82" r="7"></circle>
+            <text class="note" x="340" y="86">systemd starts wglan</text>
+
+            <circle class="step" cx="320" cy="116" r="7"></circle>
+            <text class="note" x="340" y="120">read peers.json — 2 known peers on disk</text>
+
+            <circle class="step" cx="320" cy="150" r="7"></circle>
+            <text class="note" x="340" y="154">wg set wglan0 peer ... — once per known peer</text>
+
+            <circle class="step" cx="320" cy="184" r="7"></circle>
+            <text class="note" x="340" y="188">listen on TCP :7946 — idle, ready</text>
+
+            <text class="closing" x="320" y="234" text-anchor="middle">zero JOIN messages sent — this node already knew its mesh</text>
+          </svg>
+        </div>
+        <figcaption>
+          No bootstrap IP, no network round-trip. The only reason a restart would need
+          <code>--bootstrap</code> again is a deleted or corrupted state file.
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="diagram-frame">
+          <svg class="seq" viewBox="0 0 760 220" role="img"
+            aria-label="Sequence diagram: node1 sends an HTTPS request over the WireGuard tunnel to node2's nginx container, which is bound only to node2's mesh IP, and receives a 200 OK reply — entirely over the tunnel, never touching the LAN interface.">
+            <title>Data-plane sequence — reaching a peer's service</title>
+
+            <defs>
+              <marker id="fg-arrow-solid-data" class="mk-solid-data" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 Z"></path>
+              </marker>
+              <marker id="fg-arrow-open-data" class="mk-open-data" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L9,5 L0,10"></path>
+              </marker>
+            </defs>
+
+            <rect class="actorbox" x="80" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="150" y="37" text-anchor="middle">node1</text>
+            <rect class="actorbox" x="540" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="610" y="37" text-anchor="middle">node2 (nginx)</text>
+
+            <line class="lifeline" x1="150" y1="50" x2="150" y2="180"></line>
+            <line class="lifeline" x1="610" y1="50" x2="610" y2="180"></line>
+
+            <circle class="step-data" cx="150" cy="82" r="7"></circle>
+            <text class="note" x="170" y="86">curl https://node2.mesh</text>
+
+            <text class="msg-label" x="380" y="104" text-anchor="middle">HTTPS GET / · wglan0 tunnel · 10.90.0.1 → 10.90.0.2:443</text>
+            <path class="msg-data" d="M150,112 L610,112" marker-end="url(#fg-arrow-solid-data)"></path>
+
+            <text class="note" x="415" y="130">nginx bound to 10.90.0.2:443 only</text>
+
+            <text class="msg-label" x="380" y="150" text-anchor="middle">200 OK</text>
+            <path class="msg-data-dashed" d="M610,158 L150,158" marker-end="url(#fg-arrow-open-data)"></path>
+
+            <text class="closing" x="380" y="196" text-anchor="middle">only reachable through the tunnel — never exposed on the LAN</text>
+          </svg>
+        </div>
+        <figcaption>
+          The same one-time <code>JOIN</code> exchange from the sequence above is what let
+          this happen at all — this is what the resulting tunnel is actually used for.
+        </figcaption>
+      </figure>
+    </section>
+
+    <hr class="rule">
+
+    <section id="wire">
+      <div class="eyebrow">04 · Wire format</div>
+      <h2>One sealed message, and why there is no token</h2>
+      <p class="dek">
+        Every arrow in the sequences above is the same thing on the wire: a single AES-256-GCM
+        envelope. Authentication and confidentiality are not two features here — they are one
+        primitive, and that is what closes the threats below.
+      </p>
+
+      <div class="decision" style="margin-top:0;">
+        <div class="verdict">✓ decided</div>
+        <h3 style="margin:0 0 8px; font-size:15px; font-weight:600;">Sealing the message <em>is</em> the proof of membership</h3>
+        <p>
+          The envelope key is derived from the shared secret, so producing a message that opens
+          at all proves the sender holds the secret. An earlier draft carried a separate HMAC
+          proof-token and left the payload in cleartext; that was strictly worse on both counts —
+          it disclosed the whole peer list to any passive listener, and because the token covered
+          only the sender's pubkey, every <em>other</em> field stayed forgeable under a captured
+          token. wgmesh itself settled this the same way: its runtime authenticates every wire
+          path by "the envelope opened", and the membership-token primitive it also ships has
+          zero non-test callers.
+        </p>
+      </div>
+
+      <p style="font-size:12px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--ink); margin:28px 0 8px;">Outer frame — the only bytes a stranger can influence</p>
+      <pre class="codeblock">[uint32 length]   <span style="color:var(--muted)">hard cap 4096 — larger is dropped without reading the body</span>
+{
+  "nonce":      base64,   <span style="color:var(--muted)">// 12 random bytes, fresh per message</span>
+  "ciphertext": base64    <span style="color:var(--muted)">// GCM tag covers the entire sealed payload</span>
+}</pre>
+
+      <p style="font-size:12px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--ink); margin:0 0 8px;">Sealed payload — every field below is encrypted <em>and</em> tamper-evident</p>
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="fname">protocol</td><td>string</td><td><code>"wglan-v1"</code> — fails closed on version skew before any other field is read.</td></tr>
+            <tr><td class="fname">type</td><td>string</td><td><code>JOIN</code> or <code>JOIN_REPLY</code>.</td></tr>
+            <tr><td class="fname">timestamp</td><td>int64</td><td>Unix seconds. The freshness bound. Inside the seal, so it cannot be edited.</td></tr>
+            <tr><td class="fname">pubkey</td><td>string</td><td>Sender's WireGuard public key — 44 base64 chars, decodable to 32 bytes.</td></tr>
+            <tr><td class="fname">hostname</td><td>string</td><td>Sender's mesh hostname, <code>^[a-z0-9-]{1,63}$</code>. Goes into <code>/etc/hosts</code>, so it must never hold whitespace or path metacharacters.</td></tr>
+            <tr><td class="fname">mesh_ip</td><td>string</td><td>Sender's configured mesh address. No mask — the mask is local-only.</td></tr>
+            <tr><td class="fname">lan_endpoint</td><td>string</td><td>Sender's <code>ip:port</code> for the WireGuard UDP data plane.</td></tr>
+            <tr><td class="fname">peers[]</td><td>array</td><td><code>JOIN_REPLY</code> only — <code>{pubkey, hostname, mesh_ip, lan_endpoint}</code> per known member, capped at 256. <strong>This field is why confidentiality matters:</strong> one captured reply is the entire network map, not one node's details.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="dek" style="margin:24px 0 8px;">
+        <strong style="color:var(--ink)">Freshness:</strong> a payload more than 10 minutes old —
+        <em>or</em> more than 10 minutes in the future — is rejected. Both directions on purpose:
+        rejecting only "too old" would leave a future-dated capture replayable indefinitely once
+        its time arrived.
+      </p>
+      <p class="dek" style="margin:0 0 32px;">
+        <strong style="color:var(--ink)">Validation is welded to the open:</strong> one function
+        opens the envelope, checks the protocol, checks freshness, unmarshals, and validates every
+        field. No code path yields an unvalidated struct. A rule that callers must remember is a
+        rule that eventually gets forgotten.
+      </p>
+
+      <p style="font-size:12px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--ink); margin:0 0 8px;">What stops each threat</p>
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead>
+            <tr><th style="width:30%">Threat</th><th style="width:40%">Mitigation</th><th style="width:30%">Residual</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Stranger joins the mesh</strong></td>
+              <td>Cannot produce an openable envelope without the secret.</td>
+              <td class="none">none</td>
+            </tr>
+            <tr>
+              <td><strong>Passive eavesdropper maps the mesh</strong> — pubkeys, hostnames, addresses, endpoints</td>
+              <td>Whole payload sits inside the AEAD. Nothing readable on the wire.</td>
+              <td class="none">none</td>
+            </tr>
+            <tr>
+              <td><strong>Tampering with a captured message</strong> — the serious one: rewriting <code>mesh_ip</code> repoints a peer's <code>AllowedIPs</code> and <code>/etc/hosts</code> entry, and with no reconcile loop nothing ever repairs it</td>
+              <td>GCM tag covers the entire payload. Any edit fails the open.</td>
+              <td class="none">none, from a non-member</td>
+            </tr>
+            <tr>
+              <td><strong>Verbatim replay inside the window</strong></td>
+              <td>Not prevented — and does not need to be. A <code>JOIN</code> says "peer X is at address Y", so applying it twice equals applying it once. <strong>No nonce cache, deliberately;</strong> wgmesh ships none either, for this reason.</td>
+              <td>Only matters if <code>JOIN</code> ever gains a non-idempotent side effect. Add a seen-set then, not before.</td>
+            </tr>
+            <tr>
+              <td><strong>Replay of a stale or future-dated capture</strong></td>
+              <td>Freshness check, ±10 min, inside the seal.</td>
+              <td>Bounded to a 10-minute window.</td>
+            </tr>
+            <tr>
+              <td><strong>Pre-auth resource exhaustion</strong></td>
+              <td>4KB framed read, 3s deadline, 8-connection semaphore, and a per-source-IP rate limiter applied <em>before</em> the decrypt attempt — so a stranger cannot make the node burn AES cycles on garbage.</td>
+              <td>A LAN-local flood can still deny joins while it runs. Joins are manual and rare; accepted.</td>
+            </tr>
+            <tr>
+              <td><strong>Parser oracle</strong></td>
+              <td>A failed open is the only rejection reachable pre-auth, and it is uniform. Wrong key, wrong version, stale timestamp and malformed bytes are indistinguishable on the wire by construction — not by carefully ordering hand-written checks.</td>
+              <td class="none">none</td>
+            </tr>
+            <tr>
+              <td><strong>Injection into <code>wg</code>/<code>ip</code>/<code>/etc/hosts</code></strong></td>
+              <td>Strict per-field validation as a precondition, plus <code>exec.Command</code> argv-array form exclusively — never a shell string.</td>
+              <td class="none">none</td>
+            </tr>
+            <tr class="residual">
+              <td><strong>A member forges another member's address</strong></td>
+              <td><strong>Not mitigated.</strong> Anyone holding the secret is inside every gate above by definition. Deterministic addressing would let a receiver verify <code>mesh_ip == derive(pubkey)</code>; static addressing forecloses that permanently.</td>
+              <td>Accepted — consistent with a design where membership is total and permanent (no revocation, no ACLs). The substitute is loud logging: an address or hostname <em>change</em> is logged differently from a first-sight add, naming old and new. That cannot prevent the forgery, but it makes silent persistent poisoning impossible to miss.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="decision">
+        <div class="verdict">✓ free safety</div>
+        <h3 style="margin:0 0 8px; font-size:15px; font-weight:600;"><code>sync</code> is safer than <code>JOIN</code>, at no cost</h3>
+        <p>
+          <code>JOIN</code> has to run outside the tunnel — at bootstrap there is no tunnel yet.
+          <code>sync</code> runs between members that are already peered, so it binds the mesh
+          address and travels <em>inside</em> the tunnel: WireGuard's cryptokey routing has
+          already authenticated the sender before a single line of wglan code runs, and the
+          envelope is belt-and-braces on top. This is exactly how wgmesh's gossip layer works.
+        </p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="departure">
+      <div class="eyebrow">05 · Departure &amp; death</div>
+      <h2>Leaving is a message. Dying is not.</h2>
+      <p class="dek">
+        Three situations get bundled into one feature request. They get different answers because
+        they carry different amounts of certainty — and the third one is where an obvious design
+        does real damage.
+      </p>
+
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead>
+            <tr><th style="width:34%">Situation</th><th style="width:26%">Who knows</th><th style="width:40%">Mechanism</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Planned decommission or rebuild</strong></td>
+              <td>The departing node, with certainty</td>
+              <td><code>leave</code> — one command, fans out to every peer, done</td>
+            </tr>
+            <tr>
+              <td><strong>Cleaning up after a node that's already gone</strong></td>
+              <td>The operator</td>
+              <td><code>forget &lt;pubkey&gt;</code>, run per node</td>
+            </tr>
+            <tr class="residual">
+              <td><strong>Silent loss of connectivity</strong></td>
+              <td><strong>Nobody, reliably</strong></td>
+              <td>Detected locally, marked in <code>status</code>, corroborated with <code>probe</code>, acted on by a human</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="margin:32px 0 8px; font-size:16px; font-weight:600;">Leaving: fixing an asymmetry that was already there</h3>
+      <p class="dek" style="margin-bottom:12px;">
+        Joining is one command that propagates mesh-wide. Removing a node was <code>forget</code>
+        on all N&minus;1 others. <code>wglan leave</code> seals a <code>LEAVE</code> and
+        sends it to every peer in <code>peers.json</code> — reusing the exact fan-out the joiner
+        already performs. The mechanism to make departure symmetric already existed.
+      </p>
+      <p class="dek" style="margin-bottom:12px;">
+        <strong style="color:var(--ink)">Not sent from a shutdown hook.</strong> A node stopping
+        for a reboot has not left the mesh. Announcing departure on every restart would turn the
+        common case into the rare case's message. <code>leave</code> is an explicit operator
+        action.
+      </p>
+      <div class="decision" style="margin-top:0;">
+        <div class="verdict">⚠ required constraint</div>
+        <h3 style="margin:0 0 8px; font-size:15px; font-weight:600;">A <code>LEAVE</code> is only honoured inside the tunnel, from that peer's own mesh address</h3>
+        <p>
+          A sealed message proves "the sender holds the secret" — <em>not</em> "the sender is the
+          pubkey named inside." Without this constraint any member could evict any other member.
+          wgmesh has exactly this hole: its GOODBYE handler removes whatever pubkey the message
+          names, with no binding to the sender. It's survivable there because the reconcile loop
+          re-adds the victim; here it would be <strong>permanent</strong>. Requiring the message
+          to arrive over <code>wglan0</code> from the departing peer's own mesh IP makes WireGuard's
+          cryptokey routing prove the sender's identity before a line of wglan code runs.
+        </p>
+        <p style="margin-bottom:0;">
+          <code>LEAVE</code> is a cooperative convenience, not a security control. A hostile or
+          crashed node simply never sends one — which is exactly why the third row above needs a
+          different answer.
+        </p>
+      </div>
+
+      <h3 style="margin:36px 0 8px; font-size:16px; font-weight:600;">Death: detected locally, never broadcast</h3>
+      <p class="dek" style="margin-bottom:12px;">
+        Detection is free — WireGuard already tracks it and <code>status</code> already shells out
+        for it. Two signals, not one, borrowed from wgmesh's <code>shouldTreatPeerAsStale</code>:
+        a handshake older than the threshold <strong>and</strong> transfer counters that haven't
+        grown. Handshake age alone misleads, because a peer with nothing to say looks idle while
+        being perfectly healthy.
+      </p>
+      <pre class="codeblock">$ wglan status
+node4.mesh   10.90.0.4   192.168.1.24:51820   handshake 18s
+node7.mesh   10.90.0.7   192.168.1.27:51820   <span style="color:var(--control)">stale (4d, no transfer)</span>
+
+$ wglan probe node7
+node7: unreachable from <span style="color:var(--control)">11/11</span> peers (stale 4d)   <span style="color:var(--muted)"># confident — forget it everywhere</span>
+node7: unreachable from <span style="color:var(--data)">1/11</span> peers (stale 4d)    <span style="color:var(--muted)"># your link is broken, not node7</span></pre>
+      <p class="dek" style="margin:0 0 32px;">
+        That's the whole liveness feature: it reports, a human decides. <code>probe</code> gathers
+        the same evidence a distributed failure detector would — the quorum intact — but on demand,
+        when someone is already looking, with no standing machinery and no automatic action.
+      </p>
+
+      <figure>
+        <div class="diagram-frame">
+          <svg class="seq" viewBox="0 0 900 330" role="img"
+            aria-label="Sequence diagram showing why automatic eviction is unsafe: the link between node1 and node7 breaks while node4's link to node7 stays healthy. node1 concludes node7 is dead and broadcasts that. node4 receives it and evicts node7 even though node4 was talking to node7 successfully. With no reconcile loop, the healthy node is gone from the mesh permanently.">
+            <title>Why a single observer must not broadcast a death — false eviction cascade</title>
+
+            <defs>
+              <marker id="fg-arrow-bad" class="mk-solid-control" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 Z"></path>
+              </marker>
+            </defs>
+
+            <rect class="actorbox" x="60" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="130" y="37" text-anchor="middle">node1</text>
+            <rect class="actorbox" x="380" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="450" y="37" text-anchor="middle">node4</text>
+            <rect class="actorbox" x="700" y="14" width="140" height="36" rx="3"></rect>
+            <text class="actorlabel" x="770" y="37" text-anchor="middle">node7 (healthy)</text>
+
+            <line class="lifeline" x1="130" y1="50" x2="130" y2="286"></line>
+            <line class="lifeline" x1="450" y1="50" x2="450" y2="286"></line>
+            <line class="lifeline" x1="770" y1="50" x2="770" y2="286"></line>
+
+            <text class="msg-label" x="450" y="74" text-anchor="middle">node1 → node7 path breaks · VLAN, asymmetric rule, routing fault</text>
+            <path class="msg-control" d="M130,86 L760,86" stroke-dasharray="5 4"></path>
+            <line class="divider" x1="432" y1="72" x2="468" y2="100" style="stroke:var(--control); stroke-width:2.5"></line>
+            <line class="divider" x1="468" y1="72" x2="432" y2="100" style="stroke:var(--control); stroke-width:2.5"></line>
+
+            <text class="msg-label" x="610" y="122" text-anchor="middle">node4 ↔ node7 · still perfectly healthy</text>
+            <path class="msg-data" d="M450,134 L770,134"></path>
+
+            <circle class="step" cx="130" cy="176" r="9"></circle>
+            <text class="step-num" x="130" y="180" text-anchor="middle">1</text>
+            <text class="note" x="148" y="180">node1 alone concludes: "node7 is dead"</text>
+
+            <text class="msg-label" x="290" y="212" text-anchor="middle">② broadcast · "node7 is gone"</text>
+            <path class="msg-control" d="M130,222 L450,222" marker-end="url(#fg-arrow-bad)"></path>
+            <circle class="step" cx="450" cy="222" r="9"></circle>
+            <text class="step-num" x="450" y="226" text-anchor="middle">2</text>
+            <text class="note" x="468" y="244">node4 evicts a peer it was talking to fine</text>
+
+            <text class="closing" x="450" y="278" text-anchor="middle" style="fill:var(--control)">no reconcile loop, no re-add path, persisted to peers.json — node7 is gone for good</text>
+          </svg>
+        </div>
+        <figcaption>
+          A two-node routing fault becomes a mesh-wide eviction of a healthy node, with no
+          attacker involved. Total isolation is self-limiting — a fully cut-off node can't
+          broadcast anything. It's <em>partial</em> connectivity that does the damage.
+        </figcaption>
+      </figure>
+
+      <div class="decision">
+        <div class="verdict">✕ considered and rejected</div>
+        <h3 style="margin:0 0 8px; font-size:15px; font-weight:600;">Automatic eviction on missed handshakes</h3>
+        <ul style="font-size:13.5px; color:var(--ink); line-height:1.7; max-width:68ch; padding-left:18px; margin-top:0;">
+          <li><strong>"Dead" and "unreachable from here" are indistinguishable to one observer</strong>
+            — not a gap to close with more code, but the property that makes distributed failure
+            detection hard, and the reason real systems use quorums or leases instead of one
+            node's opinion.</li>
+          <li><strong>The mistake would be permanent</strong> — see the diagram. No reconcile loop
+            to undo it, and it's persisted, so it survives restarts.</li>
+          <li><strong>The cost of not evicting is an inventory cost, not a runtime cost</strong> —
+            rotted <code>status</code> output, a stale <code>node7.mesh</code> that fails slowly
+            (connect timeout rather than NXDOMAIN), and a mesh address held against reuse by the
+            duplicate-address check. All human-visible, none breaking. Inventory is operator-owned
+            by design, so these want a human decision — exactly what automation removes.</li>
+          <li><strong>wgmesh already decided this, with every mechanism available to decide
+            otherwise</strong> — it has a reconcile loop, gossip, a health checker, and a
+            <code>peerStore.Remove()</code>. Its detector fires and the action is
+            <code>attemptPeerReconnect</code>: re-apply the config, force a fresh handshake. It
+            never removes, never marks dead, never tells another node.
+            <code>peerStore.Remove</code> has exactly one call site in the entire codebase — the
+            GOODBYE handler. Removal happens only when a peer says it's leaving.</li>
+        </ul>
+        <p>
+          If it's ever genuinely wanted, the minimum safe shape is soft state only (mark
+          unreachable, never remove — so a false positive costs a wrong label, not a broken mesh)
+          plus majority agreement before even the mark propagates. That's a periodic detector, a
+          gossip round, and a quorum rule: the reconcile loop this design deleted, plus a
+          consensus mechanism it never had. A deliberate reversal, not an edge feature.
+        </p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="exposing">
+      <div class="eyebrow">06 · Exposing services</div>
+      <h2>One peer per service, not a subnet behind one</h2>
+      <p class="dek">
+        The mesh has no concept of "a network behind a peer" — every service that needs to be
+        reachable joins as its own peer, the same way a physical node does.
+      </p>
+
+      <table class="svc-table">
+        <thead>
+          <tr><th>Service</th><th>Runs as</th><th>Why this shape</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>HTTPS</td>
+            <td>container, own peer</td>
+            <td>Single well-known port — but kept uniform with the others rather than mixed with a Docker <code>-p</code> bind, so there's one mental model for every exposed service.</td>
+          </tr>
+          <tr>
+            <td>SIP / media failover</td>
+            <td>container, own peer<br><code>--cap-add NET_ADMIN --device /dev/net/tun</code></td>
+            <td>RTP negotiates ports from a wide dynamic range per call — a real routable IP avoids enumerating them, and avoids NAT breaking SIP/RTP the way it classically does in telephony.</td>
+          </tr>
+          <tr>
+            <td>IdM replication</td>
+            <td>KVM VM, own peer<br>(no extra capabilities needed)</td>
+            <td>Needs a wide, fixed set of ports (LDAP, Kerberos, DNS, HTTP). A VM already has its own full network stack, so it joins exactly like a physical node — no capability grants at all.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="decision">
+        <div class="verdict">✕ considered and rejected</div>
+        <h3 style="margin:0 0 8px; font-size:15px; font-weight:600;">Routing a subnet through one peer</h3>
+        <p>
+          The alternative was extending one node's WireGuard <code>AllowedIPs</code> to cover an
+          entire Docker subnet (e.g. <code>172.20.0.0/24</code>) behind it, so every container on
+          that host became reachable at once. Rejected for one durable reason:
+        </p>
+        <ul style="font-size:13.5px; color:var(--ink); line-height:1.7; max-width:68ch; padding-left:18px; margin-top:0;">
+          <li><strong>All-or-nothing exposure</strong> — a routed CIDR can't distinguish one
+            container from another; anything added to that subnet later is implicitly reachable
+            too, with no deliberate step exposing it. Even a fully engineered version of this
+            feature — validated, persisted, logged — still routes the whole block at once,
+            because that's what CIDR-based routing <em>means</em>, not a gap in how it's built.</li>
+        </ul>
+        <p style="font-size:12px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--data); margin-bottom:4px;">What one-peer-per-service gains</p>
+        <ul style="font-size:13.5px; color:var(--ink); line-height:1.7; max-width:68ch; padding-left:18px; margin-top:0;">
+          <li><strong>Deliberate, individually auditable exposure</strong> — every reachable
+            service is a specific <code>JOIN</code>, visible in <code>status</code> and the join
+            log. Nothing rides along implicitly just because it happens to share a host with
+            something else.</li>
+          <li><strong>No gateway single point of failure</strong> — every peer holds direct
+            WireGuard tunnels to everyone. There's no one node that, if it goes down, takes a
+            whole set of otherwise-healthy services with it the way a subnet's routing gateway
+            would.</li>
+          <li><strong>No NAT or forwarding to configure or get wrong</strong> — each peer gets a
+            real, direct mesh IP. No <code>ip_forward</code>, no FORWARD-chain rules on a gateway
+            host, no risk of Docker's own iptables management fighting a manually-added route.</li>
+          <li><strong>One addressing scheme, one firewall shape, everywhere</strong> — every peer takes its
+            address from one inventory and gets the exact same <code>wglan0</code>
+            default-deny skeleton. Nothing to reconcile between "mesh addressing" and a foreign
+            subnet's own addressing, and no special gateway-forwarding ruleset that needs
+            different reasoning from every other node's.</li>
+        </ul>
+        <p style="font-size:12px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--ink); margin-bottom:4px;">What one-peer-per-service gives up</p>
+        <ul style="font-size:13.5px; color:var(--muted); line-height:1.7; max-width:68ch; padding-left:18px; margin-top:0;">
+          <li><strong>Anything that can't run <code>wglan</code> itself</strong> — a
+            hardware appliance, a printer, an IoT device, a closed third-party box. One-peer-per-
+            service assumes whatever you're exposing can install and run the daemon; subnet
+            routing is the only way to reach something that fundamentally can't.</li>
+          <li><strong>Transparent site-to-site bridging</strong> — merging two existing LANs (or
+            reaching a pre-existing subnet by its own real addressing) isn't possible this way.
+            Every peer gets an address out of the mesh subnet; nothing lets an entire foreign
+            network keep its own addressing and just become reachable.</li>
+          <li><strong>A dynamically scaling or highly ephemeral fleet</strong> — autoscaled
+            containers, CI-spun instances — reachable without onboarding each one individually.
+            Every peer here is a deliberate, one-time <code>JOIN</code>; that's a feature at your
+            actual churn rate (~1/day) but a real limit if something needs to scale fast.</li>
+          <li><strong>Administering reachability as one unit instead of N</strong> — one route
+            covers a whole subnet with one line of config; one-peer-per-service means one keypair,
+            one persisted identity, and one join event per thing exposed, which only stays cheap
+            because the list here is small and constant.</li>
+        </ul>
+        <p>
+          Every service that needs mesh reachability becomes its own peer instead — same
+          <code>JOIN</code>, same persistence, same <code>status</code> visibility as any
+          physical node. None of the four gaps above apply to HTTPS, IdM, or SIP/media today —
+          worth revisiting only if a future service can't run the daemon itself, or needs to
+          scale faster than this design assumes.
+        </p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="firewall">
+      <div class="eyebrow">07 · Host firewall</div>
+      <h2>Split ownership: skeleton vs. rules</h2>
+      <p class="dek">
+        Joining the mesh exposes whatever a host already has listening on <code>0.0.0.0</code> —
+        not just what it meant to expose. SSH "just works" over the mesh for exactly that reason;
+        anything else bound broadly on that host is exposed the same way, with no deliberateness
+        at all. That splits into two different concerns, owned by two different things.
+      </p>
+
+      <div class="split-grid">
+        <div class="split-card daemon">
+          <div class="who">The daemon owns</div>
+          <p>
+            One idempotent check at startup: does the <code>wglan</code> / <code>wg0_in</code>
+            table exist with <code>policy drop</code>? If not, create it — empty, no rules, no
+            knowledge of ports or peers. If it already exists, touch nothing. This is a fail-closed
+            starting state, not a policy engine — the same bar already applied to the
+            <code>JOIN</code> listener itself.
+          </p>
+        </div>
+        <div class="split-card config">
+          <div class="who">Config management owns</div>
+          <p>
+            The actual allow-list, inserted into that same daemon-created chain — never a separate
+            table. Every node allows 22 for SSH; the HTTPS peer additionally allows 443; and so on.
+            This is exactly the per-node variation Ansible host/group vars are for.
+          </p>
+        </div>
+      </div>
+
+      <pre class="codeblock">table inet wglan {
+  chain wg0_in {
+    type filter hook input priority 0; policy drop;
+    <span style="color:var(--muted)"># iif "wglan0" tcp dport 22 accept   &lt;- inserted per node, e.g. via Ansible host_vars</span>
+  }
+}</pre>
+
+      <p class="dek" style="margin-bottom:0;">
+        Scoped by <strong>interface</strong> (<code>iif "wglan0"</code>), not by IP. With static
+        addressing the mesh IP <em>is</em> known ahead of time, so this is no longer forced —
+        it's still preferred, for two reasons: <code>iif "wglan0"</code> needs neither the address
+        nor the interface to exist yet, so there's no ordering dependency between the skeleton,
+        the allow-list, and <code>wglan join</code> actually running; and it stays correct
+        across a renumber, which an address-scoped rule would not. No drift detection beyond the skeleton
+        itself — the daemon never checks what's listening outside the allow-list, the same way it
+        doesn't do ACLs or revocation. Only the guarantee that nothing gets through until
+        something explicitly says otherwise is built in.
+      </p>
+    </section>
+
+    <hr class="rule">
+
+    <section id="bootc">
+      <div class="eyebrow">08 · Packaging</div>
+      <h2>Bootc &amp; Quadlets: readiness ordering</h2>
+      <p class="dek">
+        On a bootc host, the rpm is baked into the image and a Podman Quadlet exposes the
+        service. The address itself is known from the inventory before the machine ever boots —
+        what isn't ready at boot is <code>wglan0</code>: the interface has to exist and hold that
+        address before anything can bind to it. That ordering, not address discovery, is what
+        readiness gating buys. This is a recommended packaging pattern, not yet part of the base
+        spec above.
+      </p>
+
+      <figure>
+        <div class="diagram-frame">
+          <svg class="seq" viewBox="0 0 1000 340" role="img"
+            aria-label="Sequence diagram: systemd starts wglan.service, which joins the mesh and only calls sd_notify READY once wglan0 is configured. Only then does systemd start app.service, after a oneshot helper has written the mesh IP into an environment file; app.service runs with Network=host and binds directly to that mesh IP.">
+            <title>Bootc/Quadlet sequence — readiness-gated service exposure</title>
+
+            <defs>
+              <marker id="fg-arrow-solid-boot" class="mk-solid-control" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 Z"></path>
+              </marker>
+              <marker id="fg-arrow-open-boot" class="mk-open-control" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L9,5 L0,10"></path>
+              </marker>
+            </defs>
+
+            <rect class="actorbox" x="40" y="14" width="160" height="36" rx="3"></rect>
+            <text class="actorlabel" x="120" y="37" text-anchor="middle">systemd</text>
+            <rect class="actorbox" x="390" y="14" width="210" height="36" rx="3"></rect>
+            <text class="actorlabel" x="495" y="37" text-anchor="middle">wglan.service</text>
+            <rect class="actorbox" x="790" y="14" width="190" height="36" rx="3"></rect>
+            <text class="actorlabel" x="885" y="37" text-anchor="middle">app.service</text>
+
+            <line class="lifeline" x1="120" y1="50" x2="120" y2="320"></line>
+            <line class="lifeline" x1="495" y1="50" x2="495" y2="320"></line>
+            <line class="lifeline" x1="885" y1="50" x2="885" y2="320"></line>
+
+            <text class="msg-label" x="307" y="72" text-anchor="middle">① ExecStart (Type=notify)</text>
+            <path class="msg-control" d="M120,80 L495,80" marker-end="url(#fg-arrow-solid-boot)"></path>
+            <circle class="step" cx="495" cy="80" r="9"></circle>
+            <text class="step-num" x="495" y="84" text-anchor="middle">1</text>
+            <text class="note" x="510" y="100">joins mesh over TCP — async (see Join sequence above)</text>
+            <text class="note" x="510" y="118">wglan0 comes up holding the configured mesh ip</text>
+
+            <text class="msg-label" x="307" y="140" text-anchor="middle">sd_notify(READY=1)</text>
+            <path class="msg-control-dashed" d="M495,148 L120,148" marker-end="url(#fg-arrow-open-boot)"></path>
+            <text class="note" x="135" y="166">signals real readiness — not just "process started"</text>
+
+            <line class="divider" x1="20" y1="190" x2="980" y2="190"></line>
+            <text class="divider-label" x="500" y="185" text-anchor="middle">app.service dependency satisfied — Requires=/After=wglan.service</text>
+
+            <text class="msg-label" x="502" y="214" text-anchor="middle">② ExecStart app.service</text>
+            <path class="msg-control" d="M120,222 L885,222" marker-end="url(#fg-arrow-solid-boot)"></path>
+            <circle class="step" cx="885" cy="222" r="9"></circle>
+            <text class="step-num" x="885" y="226" text-anchor="middle">2</text>
+            <text class="note" x="705" y="242">oneshot wglan-env.service already wrote MESH_IP → app.env</text>
+            <text class="note" x="705" y="260">Network=host + EnvironmentFile=... → binds directly to $MESH_IP:443</text>
+
+            <text class="closing" x="502" y="300" text-anchor="middle">app.service reachable on the mesh IP — gated by the existing wg0_in skeleton, no podman NAT involved</text>
+          </svg>
+        </div>
+        <figcaption>
+          The dependency that matters is the dashed reply, not the solid arrow that starts
+          <code>wglan.service</code> — <code>Requires=</code>/<code>After=</code> only
+          blocks correctly if readiness is signalled once <code>wglan0</code> is actually
+          configured, not the moment the process starts. <code>Network=host</code> is what lets
+          the existing <code>wg0_in</code> nftables skeleton (see Host firewall, above) gate
+          this container the same way it gates any other host process — a bridged
+          <code>PublishPort=</code> would go through Podman's own NAT/forward path instead.
+        </figcaption>
+      </figure>
+    </section>
+
+    <footer>wglan — minimal LAN-only WireGuard mesh · seed bootstrap, static addressing, no background logic · see SPEC.md</footer>
+  </main>
+</div>
