@@ -1,6 +1,7 @@
 # Implementing wglan
 
-Read [SPEC.md](SPEC.md) first — this file is the build order, not the design.
+Read [SPEC.md](SPEC.md) first — this file is the build order, not the design. Both are at draft 2;
+the ten things draft 1 got wrong are indexed in [SPEC §17](SPEC.md).
 
 ## Layout
 
@@ -9,14 +10,20 @@ package for the thing worth isolating.
 
 ```
 go.mod                  module github.com/atvirokodosprendimai/wglan — no requires
-main.go                 flag parsing, subcommand dispatch
-join.go                 JOIN client + server handler, fan-out, sync/probe
-state.go                peers.json load/save (atomic), the peer map + its mutex
+main.go                 flag parsing, subcommand dispatch, bring-up, serve
+join.go                 JOIN/LEAVE/PROBE client + handlers, fan-out, rate limiter
+state.go                peers.json load/save (atomic), peer lookups
 system.go               wg/ip/nft/hosts side effects — every exec.Command lives here
 status.go               wg show parsing, stale determination
-envelope/envelope.go    seal/open, HKDF, freshness, field validation
+main_test.go            hosts block, argv, merge rules, three-node convergence, hardening
+envelope/envelope.go    seal/open, HKDF, freshness, seen-set, field validation
 envelope/envelope_test.go
+testdata/mesh.sh        three netns end-to-end; needs root and wireguard-tools
 ```
+
+The mutex lives on the `Node` struct in `join.go` rather than on the state file loader: it has to
+cover validate → apply → persist → reply as one sequence (SPEC §14), which spans `state.go` and
+`system.go` both.
 
 `envelope` is a separate package for one reason: **nothing outside it may construct a payload
 struct.** `Open` is the only exported way to get one, so "validation is welded to the open"
@@ -33,31 +40,37 @@ Each milestone ends in something runnable, and the acceptance check is the thing
 
 ### 1 · Envelope
 
-`wglan secret`, HKDF derivation, `Seal`, `Open`, field validation, the 4KB frame, the ±600s
-window. No networking.
+`wglan secret`, HKDF derivation, `Seal`, `Open`, field validation, both frame caps, the ±600s
+window, the nonce seen-set. No networking.
 
 *Accept:* `go test ./envelope -race` covering — round-trip; wrong key fails; flipped ciphertext
 byte fails; flipped nonce byte fails; timestamp −601s fails; timestamp +601s fails (both
 directions, this is the one people skip); `protocol` mismatch fails; oversized frame rejected
-without allocating the body; every field-validation rule from SPEC §4.3, each with one valid and
-one hostile input (`hostname` containing a newline, `mesh_ip` of `10.90.0.1 10.90.0.2`, `pubkey`
-of 43 chars, `endpoint` without a port).
+without allocating the body; a replayed nonce fails and the set evicts; a full 256-peer
+`JOIN_REPLY` fits the reply cap and does *not* fit the inbound one; every field-validation rule
+from SPEC §4.3, each with one valid and one hostile input (`hostname` containing a newline,
+`mesh_ip` of `10.90.0.1 10.90.0.2`, `pubkey` of 43 chars, `endpoint` without a port,
+`control_port` of 0 and 65536, and each of those inside a `peers[]` entry).
 
 ### 2 · Interface + state
 
-`ip`/`wg` bring-up, keygen, `peers.json` atomic write, reload-on-restart. Still no protocol.
+`ip`/`wg` bring-up, keygen, `peers.json` atomic write, reload-on-restart, the firewall skeleton.
+Still no protocol.
 
 *Accept:* on one host, `wglan join --mesh-ip 10.90.0.1/24 --secret ...` with no `--bootstrap`
 brings up `wglan0` holding the address; `wg show wglan0` lists it with no peers; kill and rerun —
 it comes back from `peers.json` without touching the network. Second run must be silent about
-everything already correct.
+everything already correct. Then `nft list table inet wglan`, and **check the SSH session you are
+holding is still alive** — that is the check draft 1's skeleton failed.
 
 ### 3 · Two-node join
 
 TCP listener, `JOIN` handler, `JOIN_REPLY`, the peer-add `wg set`, the hosts block.
 
 *Accept:* two VMs. Node2 joins node1; `ping 10.90.0.1` from node2 and `ping 10.90.0.2` from node1
-both work; `curl http://node1.mesh` resolves. Then reboot node2 — the tunnel returns with no join.
+both work — the skeleton allows ICMP echo on `wglan0` for exactly this reason; `curl
+http://node1.mesh` resolves, once config management has allowed 80 in the `mesh` chain. Then reboot
+node2 — the tunnel returns with no join and no network round trip.
 
 ### 4 · Fan-out
 
@@ -67,26 +80,36 @@ their log lines.
 *Accept:* three nodes, all joined via node1. Every node's `wg show` lists **both** others — this
 is the milestone that either works or silently half-works, so check all three, not just the
 joiner. Then: a fourth node with a colliding `--mesh-ip` is rejected on every peer with a log line
-naming both pubkeys, and the mesh is unchanged.
+naming both pubkeys, and the mesh is unchanged. And the case draft 1 allowed: an
+**already-known** pubkey sending a `JOIN` that claims an existing peer's address is rejected too
+(SPEC §3.4). `TestMergeRules` and `TestCollidingJoinRejectedByPeer` cover both; `testdata/mesh.sh`
+covers the happy path against a real kernel.
 
 ### 5 · Hardening + status
 
-Rate limiter, connection semaphore, deadlines, uniform rejection, `status` with the two-signal
-stale marker (SPEC §8: handshake age **and** flat transfer counters).
+Rate limiter, connection semaphore, deadlines, uniform rejection, `status` with the stale marker
+(SPEC §8: handshake age past 180s, transfer counters printed beside it).
 
 *Accept:* `go test -race` on the handler with 100 concurrent connections, half of them garbage;
-`peers.json` is valid afterwards and no goroutine leaks. Hand-check: `nc` the control port with
-5KB of `/dev/urandom` — connection closes, one log line, no reply body. Stop a peer's WireGuard
-and confirm `status` marks it stale only after *both* signals trip.
+`peers.json` is valid afterwards, no two pubkeys hold one address, and no goroutine leaks.
+Hand-check: `nc` the control port with 5KB of `/dev/urandom` — connection closes, one log line, no
+reply body. Stop a peer's WireGuard and confirm `status` marks it stale within ~3 minutes.
 
 ### 6 · leave / forget / sync
 
-Then `probe`, only if §7's chore actually materialises.
-
 *Accept:* `wglan leave` on node3 removes it from node1 and node2 — `peers.json`, `wg show`, and
 `/etc/hosts` on both. A `LEAVE` injected from a **different** mesh address naming node3's pubkey
-is dropped (SPEC §6.1 — this is the test that matters; write it before the feature). `sync` after
-deliberately racing two joins repairs the missing edge.
+is dropped, and so is one that arrives on the LAN address rather than `wglan0` (SPEC §6.1 — this is
+the test that matters; write it before the feature: `TestLeaveBinding`,
+`TestLeaveOffTunnelRejected`). `sync` after deliberately racing two joins repairs the missing edge.
+
+### 7 · probe
+
+`PROBE` / `PROBE_REPLY`, in-tunnel and source-bound like `LEAVE`. Not a repurposed `sync`: a
+`JOIN_REPLY` carries no liveness data (SPEC §7).
+
+*Accept:* `wglan probe node7` prints `reachable from 0/N peers` when every peer agrees, and a
+partial count when only the caller's link is broken. A `PROBE` arriving off-tunnel is dropped.
 
 ## Test strategy
 
@@ -100,8 +123,13 @@ deliberately racing two joins repairs the missing edge.
 - **The hosts-block writer gets its own test with a hostile `/etc/hosts`**: no markers, markers
   present with content, markers with unrelated entries above and below, a duplicated END marker.
   Everything outside the markers must survive byte-for-byte.
-- One end-to-end script under `testdata/` that runs the three-node sequence in network namespaces
-  if you want it in CI; two VMs by hand is an acceptable substitute at this scale.
+- **`testdata/mesh.sh`** runs the three-node sequence plus a `leave` in network namespaces. It
+  needs root and `wireguard-tools`, and it is the only test that exercises the real `ip`/`wg`/`nft`
+  calls — faking the runner finds argument bugs, not kernel ones. Two VMs by hand remains an
+  acceptable substitute at this scale.
+- The tunnel-binding tests use `127.0.0.<n>` for both the mesh and the "LAN" address, so SPEC §6.1
+  is exercised over real loopback TCP without root: a node listening on its own mesh address sees
+  in-tunnel connections, and one listening elsewhere does not.
 
 ## Deliberately not in v1
 
@@ -109,9 +137,9 @@ Listed so they are not re-litigated mid-build, with the trigger that would justi
 
 | Deferred | Add when |
 |---|---|
-| `probe` | Diagnosing a suspect peer across the mesh becomes a recurring chore. |
 | Structured logging / metrics | A human reading log lines stops being enough. Not at tens of nodes. |
-| Nonce cache | `JOIN` gains a non-idempotent side effect. Not before. |
+| Persisted transfer-counter snapshot for staleness | A peer is ever seen reading stale while healthy (SPEC §8). |
+| Per-node signatures over `peers[]` entries | Second-hand endpoint poisoning by a member matters. That is the certificate architecture of SPEC §12.4, not a field. |
 | Challenge–response instead of the timestamp | Clock skew proves to be a real field problem, **or** revocation is added (SPEC §16 — they arrive together). |
 | IPv6, ACLs, subnet routing, DNS | A requirement appears. None exists. |
 | Automatic eviction | Only as soft state plus quorum. Read SPEC §8 in full first; it is a reversal of the design, not an addition to it. |

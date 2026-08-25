@@ -31,8 +31,10 @@ The second command is the entire mesh. The third is the only one you repeat.
   is what a firewall rule, a container bind, and a TLS SAN all need.
 - **Symmetric join and leave.** `wglan leave` propagates mesh-wide the same way a join does.
 - **Human-readable names.** A managed `/etc/hosts` block, not a DNS server.
-- **Zero dependencies.** `crypto/hkdf` and AES-GCM are stdlib as of Go 1.24; the binary shells out
-  to `wg`, `ip`, and `nft` exactly as `wg-quick` does.
+- **Zero dependencies.** `crypto/hkdf`, `crypto/ecdh` and AES-GCM are stdlib as of Go 1.24; the
+  binary shells out to `wg`, `ip`, and `nft` exactly as `wg-quick` does.
+- **A fail-closed firewall skeleton, scoped to the mesh interface.** `wglan0` is default-deny until
+  your config management says otherwise; nothing else on the host is touched.
 
 ## What you don't
 
@@ -51,12 +53,19 @@ re-added by accident. See [SPEC.md §2](SPEC.md) and §8.
 | **[SPEC.md](SPEC.md)** | The normative spec. Wire format, CLI surface, exact `wg`/`ip`/`nft` invocations, threat model, open questions. Implement from this. |
 | **[IMPLEMENTATION.md](IMPLEMENTATION.md)** | File layout, six milestones with the acceptance check for each, test strategy, and the deferral list with its triggers. |
 | **[docs/field-guide.html](docs/field-guide.html)** | The argument, with sequence diagrams — join, restart, data plane, false-eviction cascade, bootc readiness ordering. For evaluating the design rather than building it. |
+| **[SPEC.md §17](SPEC.md)** | The ten things spec draft 1 got wrong, and what replaced each. Read this before assuming the code diverges from the spec. |
 
 ## Status
 
-Spec complete, no code yet. Start at
-[IMPLEMENTATION.md § Build order](IMPLEMENTATION.md#build-order) — milestone 1 is the envelope and
-its tests, which is where every security property lives.
+Implemented, spec at draft 2. `go build ./...` produces the binary; `go test ./... -race` is the
+gate. `testdata/mesh.sh` runs three nodes plus a `leave` in network namespaces — root and
+`wireguard-tools` required.
+
+Draft 1 was reviewed before any code was written and ten defects came out of it, three of them
+serious: the `nftables` skeleton took the whole host offline rather than defaulting `wglan0` to
+deny, a 4KB frame cap could not carry the peer list past ~20 nodes, and an exemption in the
+duplicate-address check let any member move another peer's address onto its own key. All ten are
+fixed in the spec and the code, and indexed in [SPEC.md §17](SPEC.md).
 
 Extracted from a design review of [wgmesh](https://github.com/atvirokodosprendimai/wgmesh), whose
 sealed-envelope pattern this reuses and whose DHT, gossip, RPC, reconcile loop, derived addressing,

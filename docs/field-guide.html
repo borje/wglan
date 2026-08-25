@@ -536,7 +536,7 @@
       </div>
 
       <p style="font-size:12px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--ink); margin:28px 0 8px;">Outer frame — the only bytes a stranger can influence</p>
-      <pre class="codeblock">[uint32 length]   <span style="color:var(--muted)">hard cap 4096 — larger is dropped without reading the body</span>
+      <pre class="codeblock">[uint32 length]   <span style="color:var(--muted)">cap 4096 inbound; 262144 on a reply we asked for</span>
 {
   "nonce":      base64,   <span style="color:var(--muted)">// 12 random bytes, fresh per message</span>
   "ciphertext": base64    <span style="color:var(--muted)">// GCM tag covers the entire sealed payload</span>
@@ -550,13 +550,14 @@
           </thead>
           <tbody>
             <tr><td class="fname">protocol</td><td>string</td><td><code>"wglan-v1"</code> — fails closed on version skew before any other field is read.</td></tr>
-            <tr><td class="fname">type</td><td>string</td><td><code>JOIN</code> or <code>JOIN_REPLY</code>.</td></tr>
+            <tr><td class="fname">type</td><td>string</td><td><code>JOIN</code>, <code>JOIN_REPLY</code>, <code>LEAVE</code>, <code>PROBE</code> or <code>PROBE_REPLY</code>.</td></tr>
             <tr><td class="fname">timestamp</td><td>int64</td><td>Unix seconds. The freshness bound. Inside the seal, so it cannot be edited.</td></tr>
             <tr><td class="fname">pubkey</td><td>string</td><td>Sender's WireGuard public key — 44 base64 chars, decodable to 32 bytes.</td></tr>
             <tr><td class="fname">hostname</td><td>string</td><td>Sender's mesh hostname, <code>^[a-z0-9-]{1,63}$</code>. Goes into <code>/etc/hosts</code>, so it must never hold whitespace or path metacharacters.</td></tr>
             <tr><td class="fname">mesh_ip</td><td>string</td><td>Sender's configured mesh address. No mask — the mask is local-only.</td></tr>
             <tr><td class="fname">lan_endpoint</td><td>string</td><td>Sender's <code>ip:port</code> for the WireGuard UDP data plane.</td></tr>
-            <tr><td class="fname">peers[]</td><td>array</td><td><code>JOIN_REPLY</code> only — <code>{pubkey, hostname, mesh_ip, lan_endpoint}</code> per known member, capped at 256. <strong>This field is why confidentiality matters:</strong> one captured reply is the entire network map, not one node's details.</td></tr>
+            <tr><td class="fname">control_port</td><td>int</td><td>1&ndash;65535. Sender's TCP control port &mdash; without it, fan-out and <code>leave</code> could only guess 51821.</td></tr>
+            <tr><td class="fname">peers[]</td><td>array</td><td><code>JOIN_REPLY</code> only &mdash; <code>{pubkey, hostname, mesh_ip, lan_endpoint, control_port}</code> per known member, capped at 256 and each entry validated by the identical rules. <strong>This field is why confidentiality matters:</strong> one captured reply is the entire network map, not one node's details. It is also why the frame has two caps: 256 entries do not fit in 4096 bytes, and neither do 20.</td></tr>
           </tbody>
         </table>
       </div>
@@ -598,8 +599,8 @@
             </tr>
             <tr>
               <td><strong>Verbatim replay inside the window</strong></td>
-              <td>Not prevented — and does not need to be. A <code>JOIN</code> says "peer X is at address Y", so applying it twice equals applying it once. <strong>No nonce cache, deliberately;</strong> wgmesh ships none either, for this reason.</td>
-              <td>Only matters if <code>JOIN</code> ever gains a non-idempotent side effect. Add a seen-set then, not before.</td>
+              <td>Nonce seen-set, bounded by the freshness window. The draft-1 argument &mdash; a <code>JOIN</code> says "peer X is at address Y", so applying it twice equals applying it once &mdash; does not survive update-in-place: a known pubkey's <code>JOIN</code> is last-writer-wins, so replaying a pre-renumber capture reverts it.</td>
+              <td class="none">none</td>
             </tr>
             <tr>
               <td><strong>Replay of a stale or future-dated capture</strong></td>
@@ -608,7 +609,7 @@
             </tr>
             <tr>
               <td><strong>Pre-auth resource exhaustion</strong></td>
-              <td>4KB framed read, 3s deadline, 8-connection semaphore, and a per-source-IP rate limiter applied <em>before</em> the decrypt attempt — so a stranger cannot make the node burn AES cycles on garbage.</td>
+              <td>4KB framed read inbound, 3s deadline, 8-connection semaphore, and a per-source-IP rate limiter applied <em>before</em> the decrypt attempt — so a stranger cannot make the node burn AES cycles on garbage.</td>
               <td>A LAN-local flood can still deny joins while it runs. Joins are manual and rare; accepted.</td>
             </tr>
             <tr>
@@ -621,24 +622,42 @@
               <td>Strict per-field validation as a precondition, plus <code>exec.Command</code> argv-array form exclusively — never a shell string.</td>
               <td class="none">none</td>
             </tr>
+            <tr>
+              <td><strong>A member moves an existing peer's address onto its own pubkey</strong> — the interception case, not the squatting one</td>
+              <td>The duplicate check has no exemption for an already-known pubkey. A <code>JOIN</code> whose <code>mesh_ip</code> or <code>hostname</code> is held by a <em>different</em> pubkey is rejected and logged, naming both. Draft 1 exempted known pubkeys outright, which made this a way to move a victim's <code>AllowedIPs</code> onto the attacker's key and read its traffic.</td>
+              <td class="none">none</td>
+            </tr>
             <tr class="residual">
-              <td><strong>A member forges another member's address</strong></td>
+              <td><strong>A member claims a free address for itself</strong></td>
               <td><strong>Not mitigated.</strong> Anyone holding the secret is inside every gate above by definition. Deterministic addressing would let a receiver verify <code>mesh_ip == derive(pubkey)</code>; static addressing forecloses that permanently.</td>
               <td>Accepted — consistent with a design where membership is total and permanent (no revocation, no ACLs). The substitute is loud logging: an address or hostname <em>change</em> is logged differently from a first-sight add, naming old and new. That cannot prevent the forgery, but it makes silent persistent poisoning impossible to miss.</td>
+            </tr>
+            <tr class="residual">
+              <td><strong>A member lies about a third party's <code>lan_endpoint</code></strong> — pointing every peer's keepalives at one victim IP</td>
+              <td>Partly. A <code>JOIN</code> arriving directly takes its endpoint host from the connection's observed source address, keeping only the claimed port — a node cannot lie about where it is.</td>
+              <td>Entries learned second-hand through <code>peers[]</code> have nothing to compare against and stay as claimed. Closing that needs per-node signatures, which is the certificate architecture, not a field.</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <div class="decision">
-        <div class="verdict">✓ free safety</div>
-        <h3 style="margin:0 0 8px; font-size:15px; font-weight:600;"><code>sync</code> is safer than <code>JOIN</code>, at no cost</h3>
+        <div class="verdict">✕ hoped for, not available</div>
+        <h3 style="margin:0 0 8px; font-size:15px; font-weight:600;"><code>sync</code> does not get the tunnel; <code>leave</code> and <code>probe</code> do</h3>
         <p>
           <code>JOIN</code> has to run outside the tunnel — at bootstrap there is no tunnel yet.
-          <code>sync</code> runs between members that are already peered, so it binds the mesh
-          address and travels <em>inside</em> the tunnel: WireGuard's cryptokey routing has
-          already authenticated the sender before a single line of wglan code runs, and the
-          envelope is belt-and-braces on top. This is exactly how wgmesh's gossip layer works.
+          Draft 1 assumed <code>sync</code> could travel inside one and inherit WireGuard's
+          authentication for nothing. It cannot: the case <code>sync</code> exists to repair is a
+          <em>missing</em> edge after concurrent joins, and a missing edge means no tunnel to that
+          peer. <code>sync</code> is the <code>JOIN</code> path, outside, with the envelope as its
+          only authentication.
+        </p>
+        <p>
+          <code>leave</code> and <code>probe</code> only ever address peers already in
+          <code>peers.json</code>, so those two do travel inside it: cryptokey routing has already
+          authenticated the sender before a single line of wglan code runs, and the envelope is
+          belt-and-braces on top. Both also bind their own source address when dialling, so a
+          multi-homed host cannot have the kernel pick a source the receiver will reject.
         </p>
       </div>
     </section>
@@ -714,20 +733,28 @@
       <h3 style="margin:36px 0 8px; font-size:16px; font-weight:600;">Death: detected locally, never broadcast</h3>
       <p class="dek" style="margin-bottom:12px;">
         Detection is free — WireGuard already tracks it and <code>status</code> already shells out
-        for it. Two signals, not one, borrowed from wgmesh's <code>shouldTreatPeerAsStale</code>:
-        a handshake older than the threshold <strong>and</strong> transfer counters that haven't
-        grown. Handshake age alone misleads, because a peer with nothing to say looks idle while
-        being perfectly healthy.
+        for it. <strong>Stale means a handshake older than 180 seconds</strong>, WireGuard's own
+        rejection threshold. Draft 1 wanted two signals, borrowed from wgmesh's
+        <code>shouldTreatPeerAsStale</code> — handshake age <em>and</em> flat transfer counters —
+        on the grounds that a peer with nothing to say looks idle while being perfectly healthy.
+        True in general; false here. Every peer is added with
+        <code>persistent-keepalive 25</code> in both directions, so a reachable peer is never
+        silent. And <code>status</code> is one-shot with nothing running on a timer, so there is no
+        "last check" to compare counters against: two runs a second apart would mark a healthy mesh
+        stale. The counters are printed beside the handshake age instead, so a human still sees both
+        numbers and can disagree.
       </p>
       <pre class="codeblock">$ wglan status
-node4.mesh   10.90.0.4   192.168.1.24:51820   handshake 18s
-node7.mesh   10.90.0.7   192.168.1.27:51820   <span style="color:var(--control)">stale (4d, no transfer)</span>
+node4.mesh   10.90.0.4   192.168.1.24:51820   handshake 18s   rx 4.2M tx 3.9M
+node7.mesh   10.90.0.7   192.168.1.27:51820   <span style="color:var(--control)">stale 4d1h</span>      rx 812.0K tx 1.1M
 
 $ wglan probe node7
-node7: unreachable from <span style="color:var(--control)">11/11</span> peers (stale 4d)   <span style="color:var(--muted)"># confident — forget it everywhere</span>
-node7: unreachable from <span style="color:var(--data)">1/11</span> peers (stale 4d)    <span style="color:var(--muted)"># your link is broken, not node7</span></pre>
+node7 (10.90.0.7): reachable from <span style="color:var(--control)">0/11</span> peers   <span style="color:var(--muted)"># confident — forget it everywhere</span>
+node7 (10.90.0.7): reachable from <span style="color:var(--data)">10/11</span> peers  <span style="color:var(--muted)"># your link is broken, not node7</span></pre>
       <p class="dek" style="margin:0 0 32px;">
-        That's the whole liveness feature: it reports, a human decides. <code>probe</code> gathers
+        That's the whole liveness feature: it reports, a human decides. <code>probe</code> is its own
+        message pair rather than a repurposed <code>sync</code> — a <code>JOIN_REPLY</code> carries
+        no liveness data, so there was nothing for one to report. It gathers
         the same evidence a distributed failure detector would — the quorum intact — but on demand,
         when someone is already looking, with no standing machinery and no automatic action.
       </p>
@@ -928,29 +955,51 @@ node7: unreachable from <span style="color:var(--data)">1/11</span> peers (stale
         <div class="split-card daemon">
           <div class="who">The daemon owns</div>
           <p>
-            One idempotent check at startup: does the <code>wglan</code> / <code>wg0_in</code>
-            table exist with <code>policy drop</code>? If not, create it — empty, no rules, no
-            knowledge of ports or peers. If it already exists, touch nothing. This is a fail-closed
-            starting state, not a policy engine — the same bar already applied to the
-            <code>JOIN</code> listener itself.
+            One idempotent check at startup: does <code>table inet wglan</code> exist? If not,
+            create it in the exact shape below — a base chain that accepts by default, and two
+            rules that make <code>wglan0</code> and only <code>wglan0</code> default-deny. If it
+            already exists, touch nothing. This is a fail-closed starting state for the mesh
+            interface, not a policy engine — the same bar already applied to the <code>JOIN</code>
+            listener itself.
           </p>
         </div>
         <div class="split-card config">
           <div class="who">Config management owns</div>
           <p>
-            The actual allow-list, inserted into that same daemon-created chain — never a separate
-            table. Every node allows 22 for SSH; the HTTPS peer additionally allows 443; and so on.
-            This is exactly the per-node variation Ansible host/group vars are for.
+            The actual allow-list, appended into the daemon-created <code>mesh</code> chain — never
+            a separate table. Every node allows 22 for SSH; the HTTPS peer additionally allows 443;
+            and so on. This is exactly the per-node variation Ansible host/group vars are for.
           </p>
         </div>
       </div>
 
       <pre class="codeblock">table inet wglan {
-  chain wg0_in {
-    type filter hook input priority 0; policy drop;
-    <span style="color:var(--muted)"># iif "wglan0" tcp dport 22 accept   &lt;- inserted per node, e.g. via Ansible host_vars</span>
+  chain input {                <span style="color:var(--muted)">// base chain, hooked at input</span>
+    type filter hook input priority 0; policy accept;
+    iif "wglan0" jump mesh
+    iif "wglan0" drop          <span style="color:var(--muted)">// fail-closed, this interface only</span>
+  }
+  chain mesh {                 <span style="color:var(--muted)">// regular chain — the allow-list</span>
+    tcp dport 51821 accept     <span style="color:var(--muted)">// wglan's own control plane</span>
+    icmp type echo-request accept
+    <span style="color:var(--muted)">tcp dport 22 accept        // appended per node, e.g. via Ansible host_vars</span>
   }
 }</pre>
+
+      <div class="decision" style="margin-top:0;">
+        <div class="verdict">⚠ draft 1 got this wrong</div>
+        <p style="margin-bottom:0;">
+          Draft 1 was a single base chain with <code>policy drop</code>. That is not a scoped
+          default-deny, it is a total one: every inbound packet traverses every base chain at the
+          hook, a policy cannot be conditioned on an interface, and a drop in any base chain is
+          final no matter what another table accepts. On first startup it drops the operator's SSH
+          session, WireGuard's own UDP 51820, and the control port. The shape above keeps the
+          guarantee and scopes it — and <code>mesh</code> is a <em>regular</em> chain precisely
+          because <code>nft add rule</code> appends: an allow-list and a terminal drop in one chain
+          would be in the wrong order by construction, silently disabling every rule the operator
+          adds.
+        </p>
+      </div>
 
       <p class="dek" style="margin-bottom:0;">
         Scoped by <strong>interface</strong> (<code>iif "wglan0"</code>), not by IP. With static
@@ -1026,7 +1075,7 @@ node7: unreachable from <span style="color:var(--data)">1/11</span> peers (stale
             <text class="note" x="705" y="242">oneshot wglan-env.service already wrote MESH_IP → app.env</text>
             <text class="note" x="705" y="260">Network=host + EnvironmentFile=... → binds directly to $MESH_IP:443</text>
 
-            <text class="closing" x="502" y="300" text-anchor="middle">app.service reachable on the mesh IP — gated by the existing wg0_in skeleton, no podman NAT involved</text>
+            <text class="closing" x="502" y="300" text-anchor="middle">app.service reachable on the mesh IP — gated by the existing wglan nftables skeleton, no podman NAT involved</text>
           </svg>
         </div>
         <figcaption>
@@ -1034,7 +1083,7 @@ node7: unreachable from <span style="color:var(--data)">1/11</span> peers (stale
           <code>wglan.service</code> — <code>Requires=</code>/<code>After=</code> only
           blocks correctly if readiness is signalled once <code>wglan0</code> is actually
           configured, not the moment the process starts. <code>Network=host</code> is what lets
-          the existing <code>wg0_in</code> nftables skeleton (see Host firewall, above) gate
+          the existing <code>table inet wglan</code> nftables skeleton (see Host firewall, above) gate
           this container the same way it gates any other host process — a bridged
           <code>PublishPort=</code> would go through Podman's own NAT/forward path instead.
         </figcaption>
