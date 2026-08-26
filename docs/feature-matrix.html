@@ -199,6 +199,24 @@
           </thead>
           <tbody>
             <tr>
+              <td><strong>Underlying VPN protocol</strong></td>
+              <td class="star">WireGuard (kernel module, via <code>wg</code>/<code>ip</code>)</td>
+              <td>WireGuard</td>
+              <td>WireGuard (userspace <code>wireguard-go</code>)</td>
+              <td>WireGuard (same client protocol as Tailscale)</td>
+              <td>WireGuard</td>
+              <td>❌ custom — Salsa20/Poly1305/Curve25519, own VL1 protocol</td>
+              <td>WireGuard</td>
+              <td>❌ custom — Noise Protocol Framework (IX_PSK0), AES-256-GCM</td>
+              <td>WireGuard for encryption; custom multi-transport framing (TCP/UDP/WS/QUIC) around it</td>
+              <td>WireGuard (kernel)</td>
+              <td>WireGuard tunnel (<code>wireguard-go</code>) over a libp2p transport</td>
+              <td>❌ custom — QUIC via <code>iroh</code>, not WireGuard</td>
+              <td>❌ custom — own crypto/routing (Go stdlib primitives); can tunnel WireGuard <em>over</em> it, but isn't it</td>
+              <td>❌ custom — CryptoAuth (Salsa20-based); v22+ added WireGuard-based encryption as an alternative</td>
+              <td>❌ custom — SPTPS protocol (AES-256-CTR + HMAC-SHA-256), predates WireGuard</td>
+            </tr>
+            <tr>
               <td><strong>Coordination server required</strong></td>
               <td class="star">❌ none (one bootstrap IP)</td>
               <td>❌ none (DHT)</td><td>✅ SaaS</td><td>🔧 self-host</td>
