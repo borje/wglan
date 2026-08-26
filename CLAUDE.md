@@ -88,3 +88,10 @@ a reconcile loop or auto-eviction; that's `IMPLEMENTATION.md`'s explicit deferra
   a rejection path, since draft 1's bugs here were the serious ones (see README "Status").
 - `wglan firewall` never edits nftables; it only prints a ruleset for the operator to install. Do
   not add code that calls `nft` to mutate rules directly — see SPEC §12.5.
+
+## Development process
+
+New features are built TDD: red, green, refactor. Write the failing test first (per the acceptance
+check for that milestone in IMPLEMENTATION.md), watch it fail, make it pass with the minimum code,
+then refactor with the test still green. Bug fixes follow the same shape: a failing regression test
+before the fix.
