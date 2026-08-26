@@ -473,7 +473,7 @@
           <thead><tr><th style="width:34%">Feature</th><th>Notes</th></tr></thead>
           <tbody>
             <tr><td class="fname">✅ wglan firewall</td><td>Prints the embedded nftables skeleton with <code>--interface</code>/<code>--control-port</code> filled in — never edits nftables itself (SPEC §12.5).</td></tr>
-            <tr><td class="fname">✅ --no-firewall</td><td>A persisted opt-out that never deletes an already-installed ruleset.</td></tr>
+            <tr><td class="fname">❌ --no-firewall</td><td>Existed briefly while the daemon still edited nftables at startup; removed once the firewall became file-only — there's nothing left for it to opt out of (SPEC §17).</td></tr>
             <tr><td class="fname">✅ iifname-scoped, atomic skeleton</td><td>Create-delete-define so a reload rebuilds atomically; conntrack rule seeded first, or nothing the host initiated dials back out.</td></tr>
           </tbody>
         </table>
