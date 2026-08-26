@@ -55,6 +55,7 @@ re-added by accident. See [SPEC.md §2](SPEC.md) and §8.
 | **[SPEC.md](SPEC.md)** | The normative spec. Wire format, CLI surface, exact `wg`/`ip`/`nft` invocations, threat model, open questions. Implement from this. |
 | **[IMPLEMENTATION.md](IMPLEMENTATION.md)** | File layout, six milestones with the acceptance check for each, test strategy, and the deferral list with its triggers. |
 | **[docs/field-guide.html](docs/field-guide.html)** | The argument, with sequence diagrams — join, restart, data plane, false-eviction cascade, bootc readiness ordering. For evaluating the design rather than building it. |
+| **[docs/feature-matrix.html](docs/feature-matrix.html)** | wglan against the tools people shop for "WireGuard mesh," plus an internal shipped/deferred inventory. For positioning, not for building it. |
 | **[nftables/wglan.conf](nftables/wglan.conf)** | The shipped firewall skeleton, commented. `wglan firewall` prints this with your `--interface` and `--control-port` filled in. |
 | **[SPEC.md §17](SPEC.md)** | The ten things spec draft 1 got wrong, and what replaced each. Read this before assuming the code diverges from the spec. |
 

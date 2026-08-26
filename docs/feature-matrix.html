@@ -1,0 +1,555 @@
+<title>wglan Feature Matrix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#eef1f3;
+    --surface:#ffffff;
+    --surface-2:#e4e9ec;
+    --ink:#1c2733;
+    --muted:#5b6b78;
+    --line:#c3ccd2;
+    --data:#1a7566;
+    --control:#a85a17;
+    --font-sans:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10161c; --surface:#182028; --surface-2:#1f2a33;
+      --ink:#e8edf1; --muted:#8fa0ac; --line:#2c3944;
+      --data:#4fd8c4; --control:#f0a662;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10161c; --surface:#182028; --surface-2:#1f2a33;
+    --ink:#e8edf1; --muted:#8fa0ac; --line:#2c3944;
+    --data:#4fd8c4; --control:#f0a662;
+  }
+
+  *{ box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--font-sans); -webkit-font-smoothing:antialiased;
+  }
+  code, .mono{ font-family:var(--font-mono); }
+
+  .shell{ display:flex; max-width:1180px; margin:0 auto; }
+
+  nav.toc{
+    flex:0 0 200px;
+    position:sticky; top:0; align-self:flex-start;
+    padding:56px 20px 40px 24px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  nav.toc .brand{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--control); margin-bottom:14px;
+  }
+  nav.toc a{
+    color:var(--muted); text-decoration:none; font-size:14px;
+    padding:7px 10px; border-radius:4px; border-left:2px solid transparent;
+  }
+  nav.toc a:hover{ color:var(--ink); background:var(--surface-2); }
+
+  main{ flex:1; min-width:0; padding:56px 32px 100px 8px; }
+
+  .doc-header{ max-width:66ch; margin-bottom:44px; }
+  .doc-header h1{
+    margin:0 0 10px; font-size:clamp(30px,4vw,40px); font-weight:700;
+    letter-spacing:-0.01em; text-wrap:balance;
+  }
+  .doc-header p{ margin:0; color:var(--muted); font-size:16px; line-height:1.6; }
+
+  section{ padding-top:64px; scroll-margin-top:24px; }
+  section:first-of-type{ padding-top:0; }
+  section > .eyebrow{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--control); margin-bottom:8px;
+  }
+  section > h2{
+    margin:0 0 8px; font-size:26px; font-weight:700; letter-spacing:-0.01em;
+  }
+  section > .dek{ margin:0 0 32px; max-width:64ch; color:var(--muted); font-size:15px; line-height:1.6; }
+
+  hr.rule{ border:none; border-top:1px solid var(--line); margin:64px 0 0; }
+
+  .legend{
+    font-family:var(--font-mono); font-size:12px; color:var(--muted);
+    margin:0 0 20px; line-height:1.7;
+  }
+
+  .cut-list{
+    margin-top:28px; background:var(--surface-2); border:1px dashed var(--muted);
+    border-radius:6px; padding:18px 20px;
+  }
+  .cut-list h3{
+    margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:0.05em;
+    color:var(--muted); font-weight:600;
+  }
+  .cut-list ul{ margin:0; padding-left:18px; font-size:13.5px; color:var(--ink); line-height:1.7; }
+  .cut-list li strong{ font-weight:600; }
+  .cut-list p{ font-size:13.5px; color:var(--ink); line-height:1.7; margin:12px 0 0; }
+
+  .table-wrap{ overflow-x:auto; margin-bottom:28px; }
+  .wide-table{ width:100%; border-collapse:collapse; font-size:13px; min-width:520px; }
+  .wide-table th{
+    text-align:left; font-family:var(--font-mono); font-size:11px; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--muted); font-weight:600; padding:8px 12px;
+    border-bottom:1px solid var(--line); white-space:nowrap;
+  }
+  .wide-table td{
+    padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top;
+    color:var(--muted); line-height:1.55;
+  }
+  .wide-table tr:last-child td{ border-bottom:none; }
+  .wide-table td strong{ color:var(--ink); font-weight:600; }
+  .wide-table code{ font-size:12px; }
+  .wide-table td.fname{ font-family:var(--font-mono); font-weight:600; color:var(--ink); white-space:nowrap; }
+  .wide-table td.star{ background:var(--surface-2); font-weight:600; color:var(--ink); }
+  .wide-table tr.residual td{ background:var(--surface-2); }
+  .none{ color:var(--data); font-family:var(--font-mono); font-size:12px; }
+
+  h3.sub{ margin:32px 0 8px; font-size:16px; font-weight:600; }
+  p.note{ margin:0 0 20px; max-width:68ch; color:var(--muted); font-size:13.5px; line-height:1.6; }
+
+  .decision{ margin-top:28px; }
+  .decision .verdict{
+    display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono);
+    font-size:11.5px; letter-spacing:0.05em; text-transform:uppercase; font-weight:700;
+    color:var(--data); margin-bottom:10px;
+  }
+  .decision p{ font-size:13.5px; color:var(--muted); line-height:1.6; max-width:68ch; }
+
+  .split-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:8px; }
+  .split-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:18px 20px;
+  }
+  .split-card .who{
+    font-family:var(--font-mono); font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    font-weight:700; margin-bottom:8px;
+  }
+  .split-card.daemon .who{ color:var(--data); }
+  .split-card.config .who{ color:var(--control); }
+  .split-card ul{ margin:0; padding-left:16px; font-size:13px; color:var(--muted); line-height:1.65; }
+  .split-card li strong{ color:var(--ink); font-weight:600; }
+
+  @media (max-width:640px){
+    .split-grid{ grid-template-columns:1fr; }
+  }
+
+  footer{
+    border-top:1px solid var(--line); margin-top:80px; padding-top:20px;
+    font-size:12.5px; color:var(--muted); font-family:var(--font-mono);
+  }
+
+  @media (max-width:820px){
+    .shell{ flex-direction:column; }
+    nav.toc{ position:static; flex-direction:row; overflow-x:auto; padding:24px 20px; gap:10px; }
+    nav.toc .brand{ display:none; }
+    main{ padding:8px 20px 80px; }
+  }
+</style>
+
+<div class="shell">
+  <nav class="toc" aria-label="Sections">
+    <div class="brand">wglan</div>
+    <a href="#matrix">Competitive matrix</a>
+    <a href="#inventory">Feature inventory</a>
+    <a href="#takeaways">What this tells us</a>
+  </nav>
+
+  <main>
+    <div class="doc-header">
+      <h1>wglan feature matrix</h1>
+      <p>
+        Two views of the same inventory: how wglan sits against the field of "WireGuard mesh"
+        tools, and what wglan itself actually ships versus what SPEC.md and IMPLEMENTATION.md
+        deliberately deferred. Modeled on <em>wgmesh</em>'s own <code>FEATURE_MATRIX.md</code> —
+        the larger mesh daemon this design was cut down from — reusing its tool roster so the two
+        documents stay directly comparable. See
+        <a href="field-guide.html">field-guide.html</a> for the argument behind each choice below,
+        and <a href="../SPEC.md">SPEC.md</a> for the contract.
+      </p>
+    </div>
+
+    <section id="matrix">
+      <div class="eyebrow">01 · Competitive matrix</div>
+      <h2>wglan against the tools people actually consider</h2>
+      <p class="dek">
+        Same roster wgmesh scored itself against, so a reader can compare both documents directly.
+        The "no" column is where wglan is behind on purpose — every ❌ traces to a non-goal in
+        <a href="../SPEC.md">SPEC §2</a> or a deferral in <a href="../IMPLEMENTATION.md">IMPLEMENTATION.md</a>,
+        not an oversight.
+      </p>
+      <p class="legend">✅ shipped · 🟡 partial / limited · 🔧 self-hostable but bring-your-own · ❌ no · n/a not applicable · ❓ unverified</p>
+
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead>
+            <tr>
+              <th class="star">Capability</th><th class="star">wglan</th><th>wgmesh</th><th>Tailscale</th><th>Headscale</th>
+              <th>Netbird</th><th>ZeroTier</th><th>Innernet</th><th>Nebula</th><th>EasyTier</th>
+              <th>Netmaker</th><th>awl</th><th>rayfish</th><th>Yggdrasil</th><th>cjdns</th><th>tinc</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Coordination server required</strong></td>
+              <td class="star">❌ none (one bootstrap IP)</td>
+              <td>❌ none (DHT)</td><td>✅ SaaS</td><td>🔧 self-host</td>
+              <td>✅ SaaS or self-host</td><td>✅ Earth roots</td><td>✅ central server</td>
+              <td>🔧 lighthouses</td><td>🔧 trackers</td><td>✅ SaaS or self-host</td>
+              <td>❌ none (libp2p DHT)</td>
+              <td>🟡 none required, but defaults to iroh's public relay/discovery infra</td>
+              <td>❌ none (self-organizing)</td><td>❌ none (crypto-key routing)</td>
+              <td>❌ none (full-mesh routing)</td>
+            </tr>
+            <tr>
+              <td><strong>Bootstrap UX</strong></td>
+              <td class="star">one secret + one bootstrap IP, address from inventory</td>
+              <td>one secret</td><td>account + login</td><td>account + login</td>
+              <td>account + login</td><td>network ID + auth</td><td>invitation files</td>
+              <td>cert authority + config</td><td>name + secret</td><td>account + login</td>
+              <td>install app, add peer by code</td><td>shared ticket/key</td>
+              <td>static peer addr (or none on LAN)</td>
+              <td>manual peer config (IP:port + password), or LAN auto-peer beacon</td>
+              <td>manual — exchange host config files once</td>
+            </tr>
+            <tr>
+              <td><strong>NAT traversal</strong></td>
+              <td class="star">❌ not a goal — LAN + one bootstrap IP only, no STUN/relay</td>
+              <td>✅ DHT-driven</td><td>✅ DERP relays</td><td>🟡 needs DERP</td>
+              <td>✅ Coturn/STUN</td><td>✅ Earth relays</td><td>🟡 limited</td>
+              <td>✅ lighthouses</td><td>✅ public relays</td><td>✅ built-in STUN/relay</td>
+              <td>✅ libp2p hole-punch + community relays</td><td>✅ iroh hole-punch, ~90% direct</td>
+              <td>🟡 not a design goal — needs a reachable peer</td>
+              <td>🟡 LAN beacon only; internet peering needs a reachable peer</td>
+              <td>🟡 basic UDP hole-punching, not robust</td>
+            </tr>
+            <tr>
+              <td><strong>Works fully offline (LAN)</strong></td>
+              <td class="star">✅ true by construction — nothing outside the LAN ever runs, even at startup</td>
+              <td>✅ multicast (design intent — see caveat)</td>
+              <td>❌ needs control plane</td><td>❌ needs control plane</td>
+              <td>❌ needs control plane</td><td>❌ needs Earth</td><td>❌ needs server</td>
+              <td>🟡 needs lighthouse</td><td>🟡 needs tracker</td><td>❌ needs server</td>
+              <td>❓ unverified</td><td>❓ unverified</td>
+              <td>✅ multicast peer discovery</td>
+              <td>✅ UDP beacon auto-peer, no server ever needed</td>
+              <td>✅ once host files are distributed, no bootstrap needed</td>
+            </tr>
+            <tr>
+              <td><strong>Routable subnets</strong></td>
+              <td class="star">❌ rejected — one peer per service, no CIDR routing</td>
+              <td>✅ both modes</td><td>✅ subnet routers</td><td>✅</td><td>✅</td>
+              <td>✅ bridging</td><td>✅ CIDRs</td><td>✅ unsafe_routes</td><td>✅</td><td>✅</td>
+              <td>🟡 exit-node/SOCKS5, not full CIDR</td><td>🟡 early-stage</td>
+              <td>🟡 possible via extensions, not core</td>
+              <td>🟡 possible via tunnel extensions, not core</td>
+              <td>✅ per-host <code>subnet</code> directive</td>
+            </tr>
+            <tr>
+              <td><strong>ACLs / segmentation</strong></td>
+              <td class="star">❌ none — membership is total and permanent</td>
+              <td>✅ centralized only</td><td>✅ HuJSON ACLs</td><td>✅</td><td>✅ groups + rules</td>
+              <td>✅ flow rules</td><td>✅ CIDR-based</td><td>✅ groups</td><td>🟡</td>
+              <td>✅ paid tiers for advanced</td><td>❌ none</td><td>❌ not yet</td>
+              <td>❌ none</td><td>❌ none</td><td>🟡 basic, subnet-based only</td>
+            </tr>
+            <tr>
+              <td><strong>Magic DNS / name resolution</strong></td>
+              <td class="star">🟡 managed <code>/etc/hosts</code> block, not a DNS server</td>
+              <td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>🟡</td><td>❌</td><td>❌</td>
+              <td>🟡</td><td>✅</td><td>❌</td><td>❌</td>
+              <td>❌ own IPv6 scheme, no name service</td>
+              <td>❌ own IPv6 scheme (pubkey-derived), no name service</td><td>❌</td>
+            </tr>
+            <tr>
+              <td><strong>Mobile clients (iOS/Android)</strong></td>
+              <td class="star">❌ Linux only</td>
+              <td>❌</td><td>✅</td><td>✅ via Tailscale app</td><td>✅</td><td>✅</td><td>❌</td>
+              <td>❌</td><td>❌</td><td>✅</td><td>🟡 Android only</td><td>🟡 Android, alpha</td>
+              <td>🟡 community Android app</td><td>❌ none official</td><td>❌ none official</td>
+            </tr>
+            <tr>
+              <td><strong>Web dashboard / GUI</strong></td>
+              <td class="star">❌ CLI only</td>
+              <td>🟡 chimney (read-only)</td><td>✅</td><td>🟡</td><td>✅</td><td>✅</td><td>❌</td>
+              <td>❌</td><td>🟡</td><td>✅</td><td>✅ native GUI (Win/Linux/Android)</td>
+              <td>❌ CLI only</td><td>❌ CLI/admin API only</td><td>❌ CLI/admin socket only</td>
+              <td>❌ CLI/config files only</td>
+            </tr>
+            <tr>
+              <td><strong>SSO / OIDC / SAML</strong></td>
+              <td class="star">n/a — no accounts, nothing to log into</td>
+              <td>❌</td><td>✅</td><td>🟡 OIDC</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td>
+              <td>❌</td><td>🟡 paid tiers</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td>
+            </tr>
+            <tr>
+              <td><strong>Audit logs</strong></td>
+              <td class="star">❌ log lines only, no structured trail</td>
+              <td>❌</td><td>✅</td><td>🟡</td><td>✅</td><td>✅</td><td>❌</td><td>🟡</td><td>❌</td>
+              <td>🟡 paid tiers</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td>
+            </tr>
+            <tr>
+              <td><strong>Open source</strong></td>
+              <td class="star">❓ no LICENSE file committed yet</td>
+              <td>✅ MIT</td><td>🟡 client only</td><td>✅ BSD-3</td><td>✅ BSD-3</td>
+              <td>✅ BSL-1.1</td><td>✅ MIT</td><td>✅ MIT</td><td>✅ Apache-2</td>
+              <td>🟡 open-core (CE OSS, enterprise closed)</td><td>✅ MPL-2.0</td><td>✅ MPL-2.0</td>
+              <td>✅ LGPL-3.0</td><td>✅ GPL-3.0</td><td>✅ GPL-2.0</td>
+            </tr>
+            <tr>
+              <td><strong>Self-hostable end-to-end</strong></td>
+              <td class="star">✅ no server at all</td>
+              <td>✅ no server at all</td><td>❌</td><td>✅</td><td>✅</td><td>🟡</td><td>✅</td>
+              <td>✅</td><td>✅</td><td>✅</td><td>✅ no server at all</td>
+              <td>🟡 defaults to iroh's public infra, can self-host</td><td>✅</td>
+              <td>✅ no server concept at all</td><td>✅ no server concept at all</td>
+            </tr>
+            <tr>
+              <td><strong>Encrypted state at rest</strong></td>
+              <td class="star">❌ <code>peers.json</code> is plaintext</td>
+              <td>✅ AES-256-GCM</td><td>n/a</td><td>🟡 DB-level</td><td>🟡 DB-level</td>
+              <td>n/a</td><td>🟡</td><td>🟡</td><td>❌</td><td>🟡 DB-level</td>
+              <td>❓ unverified</td><td>❓ unverified</td><td>n/a</td><td>n/a</td>
+              <td>n/a — keys on disk, unencrypted by default</td>
+            </tr>
+            <tr>
+              <td><strong>EU-based / GDPR-friendly</strong></td>
+              <td class="star">n/a — no company, no hosting; it's a binary you run</td>
+              <td>✅ Hetzner, deSEC</td><td>❌ US</td><td>depends on host</td><td>depends on host</td>
+              <td>❌ US</td><td>depends on host</td><td>depends on host</td><td>depends on host</td>
+              <td>depends on host</td><td>n/a (no company)</td><td>n/a (no company)</td>
+              <td>n/a (public network)</td><td>n/a (no company)</td><td>n/a (no company)</td>
+            </tr>
+            <tr>
+              <td><strong>Vendor lock-in risk</strong></td>
+              <td class="star">low — zero deps, plain nftables/JSON/wg config</td>
+              <td>low</td><td>high</td><td>low</td><td>medium</td><td>high</td><td>low</td>
+              <td>low</td><td>medium</td><td>medium</td><td>low</td><td>low</td><td>low</td><td>low</td><td>low</td>
+            </tr>
+            <tr>
+              <td><strong>Time-to-mesh (LAN)</strong></td>
+              <td class="star">&lt;1s — one TCP JOIN round trip, no discovery layer to wait on</td>
+              <td>&lt;5s</td><td>~30s</td><td>~30s</td><td>~30s</td><td>~30s</td><td>manual</td>
+              <td>manual</td><td>~30s</td><td>~30s</td><td>❓ unverified</td><td>❓ unverified</td>
+              <td>&lt;5s (multicast)</td><td>&lt;5s (beacon)</td>
+              <td>manual (host files first), then instant</td>
+            </tr>
+            <tr>
+              <td><strong>Time-to-mesh (Internet)</strong></td>
+              <td class="star">n/a — LAN-only by design, no internet-facing bootstrap path</td>
+              <td>15–60s</td><td>5–10s</td><td>5–10s</td><td>5–10s</td><td>5–10s</td><td>manual</td>
+              <td>10–30s</td><td>30–60s</td><td>5–10s</td><td>10–30s (DHT)</td>
+              <td>5–10s (QUIC hole-punch)</td><td>manual (static peer config)</td>
+              <td>manual (static peer config)</td><td>manual (host file exchange)</td>
+            </tr>
+            <tr>
+              <td><strong>CLI-only operation</strong></td>
+              <td class="star">✅</td>
+              <td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
+              <td>✅</td><td>🟡 GUI-first, has daemon mode</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td>
+            </tr>
+            <tr>
+              <td><strong>Maintained by</strong></td>
+              <td class="star">solo</td>
+              <td>solo + AI agents</td><td>YC company</td><td>community</td><td>YC company</td>
+              <td>ZeroTier Inc.</td><td>Tonari</td><td>Defined Networking</td><td>community</td>
+              <td>Netmaker, Inc.</td><td>community, small team</td>
+              <td>community, early-stage (~513★, alpha)</td>
+              <td>community, long-running (alpha-labeled)</td>
+              <td>community, long-running (since ~2011)</td>
+              <td>community, very long-running (since 1998), low activity</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub">Closest true peers: cjdns, tinc, Yggdrasil — and wgmesh's own LAN path</h3>
+      <p class="note">
+        Every SaaS/open-core tool in the table still needs something centralized. Three
+        no-server projects genuinely share wglan's "actually offline" claim, plus one path
+        inside wglan's own ancestor:
+      </p>
+      <div class="cut-list" style="margin-top:0;">
+        <ul>
+          <li><strong>cjdns</strong> — UDP beacon auto-peers on LAN, no server ever, but addressing is derived from a cryptographic scheme rather than operator-chosen; no static inventory, no <code>/etc/hosts</code> naming, no shipped firewall skeleton.</li>
+          <li><strong>tinc</strong> — a one-time manual host-file exchange, then zero network calls forever. Closest in spirit to "join once, nothing on a timer" — but the exchange is N-way manual file copying, not one shared secret plus one bootstrap IP.</li>
+          <li><strong>Yggdrasil</strong> — self-organizing, no bootstrap secret at all. Strong on LAN auto-discovery, but pubkey-derived addressing (no operator-chosen subnet) and nothing like wglan's symmetric <code>leave</code> or host firewall skeleton.</li>
+          <li><strong>wgmesh's own LAN-multicast layer</strong> — the same "actually offline" claim, but it's one path inside a much larger daemon that also resolves public DHT bootstrap hostnames on every start by default. wglan has none of that surface to audit or disable in the first place.</li>
+        </ul>
+        <p>
+          None of the four combine wglan's specific bet: a shared secret is the <em>entire</em>
+          membership mechanism, addressing is static from an inventory instead of derived, and
+          nothing runs on a timer once a join completes. That combination — not "works offline"
+          alone — is the axis wglan is actually optimizing.
+        </p>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="inventory">
+      <div class="eyebrow">02 · Feature inventory</div>
+      <h2>What wglan ships, and what it doesn't yet</h2>
+      <p class="dek">
+        One binary, one operating mode — so this is one inventory, not per-mode tables. Status:
+        ✅ shipped · 📋 deferred, with the trigger that would justify building it.
+      </p>
+
+      <h3 class="sub" style="margin-top:0;">Envelope &amp; protocol</h3>
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead><tr><th style="width:34%">Feature</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="fname">✅ wglan secret</td><td>Generates the shared secret the envelope key derives from.</td></tr>
+            <tr><td class="fname">✅ AES-256-GCM sealed envelope</td><td>One primitive for confidentiality <em>and</em> the membership proof — opening it is the proof (SPEC §4).</td></tr>
+            <tr><td class="fname">✅ HKDF key derivation</td><td>From the shared secret; stdlib <code>crypto/hkdf</code> as of Go 1.24.</td></tr>
+            <tr><td class="fname">✅ Freshness window</td><td>±10 minutes, both directions — rejecting only "too old" would leave a future-dated capture replayable once its time arrived.</td></tr>
+            <tr><td class="fname">✅ Nonce seen-set</td><td>Replay defense, bounded by the freshness window.</td></tr>
+            <tr><td class="fname">✅ Validation welded to <code>Open</code></td><td>No code path yields an unvalidated payload struct (SPEC §4.5).</td></tr>
+            <tr><td class="fname">✅ Uniform pre-auth rejection</td><td>Wrong key, wrong version, stale timestamp, and malformed bytes are indistinguishable on the wire by construction.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub">Join, leave, repair, probe</h3>
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead><tr><th style="width:34%">Feature</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="fname">✅ wglan join</td><td>Full mesh from one bootstrap IP — the joiner unions the peer list it's handed and greets every member directly.</td></tr>
+            <tr><td class="fname">✅ Duplicate-address / colliding-pubkey rejection</td><td>No exemption for an already-known pubkey (SPEC §3.4) — the draft-1 bug that let a member move a victim's address onto its own key.</td></tr>
+            <tr><td class="fname">✅ <code>peers.json</code> atomic load/save</td><td>Restart reloads directly, no network round trip, no re-bootstrap.</td></tr>
+            <tr><td class="fname">✅ Managed <code>/etc/hosts</code> block</td><td><code>&lt;node&gt;.mesh</code> entries; everything outside the markers survives byte-for-byte, even against a hostile file.</td></tr>
+            <tr><td class="fname">✅ wglan leave</td><td>Seals a <code>LEAVE</code>, fans out to every peer, then deletes the <code>wglan0</code> interface after announcing.</td></tr>
+            <tr><td class="fname">✅ LEAVE bound to tunnel + sender's own mesh IP</td><td>Otherwise any member could evict any other — WireGuard's cryptokey routing proves the sender before wglan code runs (SPEC §6.1).</td></tr>
+            <tr><td class="fname">✅ wglan forget &lt;pubkey&gt;</td><td>Operator cleanup for a node that's already gone.</td></tr>
+            <tr><td class="fname">✅ wglan sync</td><td>Repairs a missing edge after two joins race — the <code>JOIN</code> path, outside the tunnel, envelope as its only authentication.</td></tr>
+            <tr><td class="fname">✅ wglan probe</td><td>Liveness corroboration across peers; in-tunnel and source-bound like <code>LEAVE</code>, not a repurposed <code>sync</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub">Hardening &amp; status</h3>
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead><tr><th style="width:34%">Feature</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="fname">✅ Pre-auth hardening</td><td>Rate limiter, 8-connection semaphore, I/O deadlines — all applied before a decrypt is attempted (SPEC §12.2).</td></tr>
+            <tr><td class="fname">✅ wglan status</td><td>Stale marker at 180s handshake age (WireGuard's own threshold); transfer counters printed alongside for a human to disagree with.</td></tr>
+            <tr><td class="fname">✅ Argv-array <code>exec.Command</code> only</td><td>Never a shell string built from a peer-controlled field — the injection guarantee tests assert on argv, not a rendered string.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub">Host firewall</h3>
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead><tr><th style="width:34%">Feature</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="fname">✅ wglan firewall</td><td>Prints the embedded nftables skeleton with <code>--interface</code>/<code>--control-port</code> filled in — never edits nftables itself (SPEC §12.5).</td></tr>
+            <tr><td class="fname">✅ --no-firewall</td><td>A persisted opt-out that never deletes an already-installed ruleset.</td></tr>
+            <tr><td class="fname">✅ iifname-scoped, atomic skeleton</td><td>Create-delete-define so a reload rebuilds atomically; conntrack rule seeded first, or nothing the host initiated dials back out.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub">Deliberately not in v1</h3>
+      <p class="note" style="margin-bottom:16px;">
+        Straight from <a href="../IMPLEMENTATION.md">IMPLEMENTATION.md</a>, so it isn't
+        re-litigated mid-build — listed with the trigger that would justify each.
+      </p>
+      <div class="table-wrap">
+        <table class="wide-table">
+          <thead><tr><th style="width:34%">Deferred</th><th>Add when</th></tr></thead>
+          <tbody>
+            <tr><td class="fname">📋 Structured logging / metrics</td><td>A human reading log lines stops being enough. Not at tens of nodes.</td></tr>
+            <tr><td class="fname">📋 Persisted transfer-counter snapshot</td><td>A peer is ever seen reading stale while healthy (SPEC §8).</td></tr>
+            <tr><td class="fname">📋 Per-node signatures over <code>peers[]</code></td><td>Second-hand endpoint poisoning by a member matters. That's the certificate architecture of SPEC §12.4, not a field.</td></tr>
+            <tr><td class="fname">📋 Challenge–response instead of timestamp</td><td>Clock skew proves to be a real field problem, <em>or</em> revocation is added (SPEC §16 — they arrive together).</td></tr>
+            <tr><td class="fname">📋 IPv6, ACLs, subnet routing, DNS</td><td>A requirement appears. None exists.</td></tr>
+            <tr><td class="fname">📋 Automatic eviction</td><td>Only as soft state plus quorum. Read SPEC §8 in full first — it's a reversal of the design, not an addition to it.</td></tr>
+            <tr><td class="fname">📋 Encrypted state at rest</td><td><code>peers.json</code> ever needs to survive on shared or untrusted storage. Not requested yet.</td></tr>
+            <tr><td class="fname">📋 Packaging (.deb/.rpm/Docker/CI)</td><td>Distribution beyond <code>go build ./...</code> is actually needed. Bootc/Quadlet is documented as a pattern (field-guide §08), not shipped tooling.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <section id="takeaways">
+      <div class="eyebrow">03 · What this tells us</div>
+      <h2>Narrow on purpose, not narrow by accident</h2>
+      <p class="dek">Three things stand out reading both halves together.</p>
+
+      <p class="note">
+        The first is that <strong style="color:var(--ink)">wglan trades breadth for auditability
+        on purpose</strong>. Every ❌ in the competitive matrix traces to a non-goal recorded in
+        <a href="../SPEC.md">SPEC §2</a> or a deferral in IMPLEMENTATION.md with its own trigger
+        condition — nothing in that column is an accidental gap, and none of it is hidden here.
+      </p>
+      <p class="note">
+        The second is that <strong style="color:var(--ink)">wglan's real competitive set isn't
+        the SaaS mesh tools at all</strong> — it's the handful of no-server tools (cjdns, tinc,
+        Yggdrasil) and the one LAN-multicast path buried inside a much larger wgmesh. Against
+        that set, the differentiator is narrow but real: a shared secret is the entire membership
+        mechanism, addressing is static and operator-chosen rather than derived, and nothing ever
+        runs on a timer.
+      </p>
+      <p class="note">
+        The third is that <strong style="color:var(--ink)">the shipped list is almost the whole
+        list</strong>. The deferred table is short because most of what a bigger mesh tool
+        eventually needs — ACLs, revocation, structured logging — was scoped out at the spec
+        stage rather than left half-built. Everything not listed as deferred is implemented,
+        tested under <code>-race</code>, and has an acceptance check that was actually run
+        (IMPLEMENTATION.md's six milestones).
+      </p>
+
+      <div class="split-grid" style="margin-top:12px;">
+        <div class="split-card daemon">
+          <div class="who">Where wglan wins</div>
+          <ul>
+            <li><strong>Genuinely zero background logic</strong> — no reconcile loop, no beacon, no timers, ever, once a join completes.</li>
+            <li><strong>Full mesh from one bootstrap IP</strong>, exact convergence proven by induction — not gossip, not eventual consistency.</li>
+            <li><strong>Sealing the message is the proof of membership</strong> — no separate token, no unused membership primitive to maintain.</li>
+            <li><strong>Small enough to read in one sitting</strong> — one main package, six files, one isolated package, zero third-party dependencies.</li>
+            <li><strong>The firewall is a file you own</strong>, never a table applied at runtime — survives an <code>nftables</code> restart.</li>
+          </ul>
+        </div>
+        <div class="split-card config">
+          <div class="who">Where wglan loses</div>
+          <ul>
+            <li><strong>LAN + one bootstrap IP only</strong> — no NAT traversal, no path to an internet-wide mesh at all.</li>
+            <li><strong>No ACLs</strong> — membership is total; nothing scopes who can talk to whom once joined.</li>
+            <li><strong>No revocation</strong> — removing a node is a secret rotation, a flag day, not a command.</li>
+            <li><strong>No encrypted state at rest</strong> — <code>peers.json</code> sits on disk in plaintext.</li>
+            <li><strong>No mobile, GUI, or DNS server</strong> — CLI and <code>/etc/hosts</code>, nothing else.</li>
+            <li><strong>No packaging at all</strong> — <code>go build ./...</code> is the entire release process; solo maintainer, no ecosystem.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="verdict">→ positioning</div>
+        <p>
+          wglan is for the LAN that has no business talking to the internet at all — a lab, a
+          fleet of self-hosted boxes, an air-gapped network. If the mesh needs to span the
+          internet, needs ACLs, or needs to be reachable from a phone, wglan is the wrong tool
+          <em>by design</em>, not by oversight — wgmesh, Tailscale, or Netbird answer that. If the
+          requirement is "a handful of boxes on one LAN, one secret, and nothing that ever wakes
+          up on its own," this is the tool built for exactly that and nothing more.
+        </p>
+      </div>
+    </section>
+
+    <footer>wglan — minimal LAN-only WireGuard mesh · feature matrix vs. FEATURE_MATRIX.md's roster · see SPEC.md</footer>
+  </main>
+</div>
