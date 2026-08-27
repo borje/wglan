@@ -494,6 +494,16 @@ func (n *Node) handleProbe(conn net.Conn, p envelope.Payload, from string) {
 	}
 }
 
+// probeAll probes every known peer in turn, printing one tally line each.
+func (n *Node) probeAll() {
+	n.mu.Lock()
+	targets := slices.Clone(n.st.Peers)
+	n.mu.Unlock()
+	for _, p := range targets {
+		n.probeMesh(p)
+	}
+}
+
 // probeMesh asks every peer for its view of one target and prints the tally.
 func (n *Node) probeMesh(target envelope.Peer) {
 	n.mu.Lock()

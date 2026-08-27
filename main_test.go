@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -829,5 +830,50 @@ func TestJoinReturnsInsteadOfServing(t *testing.T) {
 	}
 	if !knows(n1, n2) {
 		t.Error("cmdJoin returned but never announced us to the bootstrap")
+	}
+}
+
+// SPEC §7: `wglan probe` with no argument tallies every known peer, not just
+// one named suspect. Written before the feature, per IMPLEMENTATION.md.
+func TestProbeAllTargetsEveryPeer(t *testing.T) {
+	key := mustKey(t)
+	n1, _ := testNode(t, key, 1)
+	n2, _ := testNode(t, key, 2)
+	n3, _ := testNode(t, key, 3)
+	listen(t, n1)
+	listen(t, n2)
+	listen(t, n3)
+
+	boot1 := n1.self().ControlAddr()
+	if err := n2.joinTo(boot1); err != nil {
+		t.Fatal(err)
+	}
+	n2.fanout(boot1)
+	if err := n3.joinTo(boot1); err != nil {
+		t.Fatal(err)
+	}
+	n3.fanout(boot1)
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	n1.probeAll()
+	w.Close()
+	os.Stdout = old
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{"node2", "node3"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("probeAll output missing a tally for %s:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(string(out), "reachable from"); n != 2 {
+		t.Errorf("want 2 tally lines (one per peer), got %d:\n%s", n, out)
 	}
 }

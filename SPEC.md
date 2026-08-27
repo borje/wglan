@@ -313,9 +313,11 @@ these are manual, run to completion, and add no timers.
 - **`wglan forget <pubkey>`** — removes that peer from `peers.json`, the hosts block, and the
   interface. Run per node. Bounded local state cleanup, **not revocation**: a node that still
   holds the secret can rejoin.
-- **`wglan probe <pubkey|hostname>`** — asks every known member for *their* view of one suspect
-  peer and prints the tally: `node7: reachable from 0/11 peers`. This is the diagnosis step before
-  `forget`, and it exists because one node's opinion about reachability is not evidence (§8).
+- **`wglan probe [pubkey|hostname]`** — asks every known member for *their* view of one suspect
+  peer and prints the tally: `node7: reachable from 0/11 peers`. With no argument it probes every
+  known peer in turn and prints one tally line each — the same diagnosis step, run mesh-wide
+  instead of against one named suspect. This is the diagnosis step before `forget`, and it exists
+  because one node's opinion about reachability is not evidence (§8).
 
   It is **not** "a `sync` that reports instead of applying", as draft 1 had it: a `JOIN_REPLY`
   carries no liveness data, so there is nothing for a repurposed `sync` to report. `PROBE` carries
@@ -378,7 +380,7 @@ wglan status                                  per-peer view, with stale marking
 wglan sync    IP:PORT                         re-announce to one member and re-apply its list
 wglan forget  PUBKEY                          local removal of one peer
 wglan leave                                   announce departure to every peer, then remove the interface
-wglan probe   PUBKEY|HOSTNAME                 mesh-wide reachability tally
+wglan probe   [PUBKEY|HOSTNAME]                mesh-wide reachability tally (every peer if omitted)
 wglan firewall                                print the nftables skeleton for this node
 ```
 
