@@ -68,8 +68,12 @@ const usage = `wglan — a minimal WireGuard mesh for a LAN with no internet acc
 what a systemd unit should start. Re-running "join" against an already-joined
 node is safe, and is how you re-announce after renumbering.
 
-The secret may be given with --secret, in $WGLAN_SECRET, or read from
-<state-dir>/secret, where join persists it so a reboot needs no operator.
+Run "wglan <command> -h" for that command's flags — each only accepts the
+flags it actually uses, so this list never grows a flag it doesn't act on.
+
+"wglan join" takes the secret via --secret or $WGLAN_SECRET and persists it to
+<state-dir>/secret; every other command reads it from there (or $WGLAN_SECRET),
+so a reboot needs no operator present.
 
 wglan never edits nftables. "wglan firewall" prints a ruleset that default-denies
 the mesh interface; install it where your nftables config is loaded from. Until
@@ -84,9 +88,83 @@ type opts struct {
 	iface       string
 	lanIP       string
 	dir         string
-	hostsFile   string
 	listenPort  int
 	controlPort int
+}
+
+// A flagReg registers one flag on a FlagSet against a field of o. Bundling
+// name+registration lets commandFlagSets be the single table that drives both
+// "is this a valid subcommand" and "which flags does it accept" — one place to
+// update when a subcommand's flags change, instead of two lists that can drift.
+type flagReg struct {
+	name string
+	reg  func(fs *flag.FlagSet, o *opts)
+}
+
+var (
+	flagInterface = flagReg{"interface", func(fs *flag.FlagSet, o *opts) {
+		// No default here: an empty value is what lets the name join persisted
+		// win over the fallback. See resolveIface.
+		fs.StringVar(&o.iface, "interface", "", "WireGuard interface name (default: the one join used, else "+defaultIface+")")
+	}}
+	flagStateDir = flagReg{"state-dir", func(fs *flag.FlagSet, o *opts) {
+		fs.StringVar(&o.dir, "state-dir", "/var/lib/wglan", "where peers.json, private.key and secret live")
+	}}
+	// --lan-ip only matters on a path that calls n.self() to advertise our own
+	// LAN endpoint — join/run/sync always can, and forget rewrites the hosts
+	// block (which includes our own entry) too.
+	flagLanIP = flagReg{"lan-ip", func(fs *flag.FlagSet, o *opts) {
+		fs.StringVar(&o.lanIP, "lan-ip", "", "this node's LAN address (default: first global unicast IPv4)")
+	}}
+	// --secret exists only on join: every other command reads the secret join
+	// persisted to <state-dir>/secret (or $WGLAN_SECRET), per SPEC §9 — that's
+	// the whole point of persisting it, so run et al. need no operator present.
+	flagSecret = flagReg{"secret", func(fs *flag.FlagSet, o *opts) {
+		fs.StringVar(&o.secret, "secret", "", "wglan://v1/... shared secret")
+	}}
+	flagMeshIP = flagReg{"mesh-ip", func(fs *flag.FlagSet, o *opts) {
+		fs.StringVar(&o.meshIP, "mesh-ip", "", "this node's mesh address with mask, e.g. 10.90.0.3/24")
+	}}
+	flagBootstrap = flagReg{"bootstrap", func(fs *flag.FlagSet, o *opts) {
+		fs.StringVar(&o.bootstrap, "bootstrap", "", "any existing member's control address, IP:PORT")
+	}}
+	flagHostname = flagReg{"hostname", func(fs *flag.FlagSet, o *opts) {
+		fs.StringVar(&o.hostname, "hostname", "", "mesh hostname (default: the OS hostname)")
+	}}
+	flagListenPort = flagReg{"listen-port", func(fs *flag.FlagSet, o *opts) {
+		fs.IntVar(&o.listenPort, "listen-port", 51820, "WireGuard UDP data-plane port")
+	}}
+	flagControlPort = flagReg{"control-port", func(fs *flag.FlagSet, o *opts) {
+		fs.IntVar(&o.controlPort, "control-port", 51821, "TCP control-plane port")
+	}}
+)
+
+// commandFlagSets is the single source of truth for both "is cmd a valid
+// subcommand" (its keys) and "which flags does cmd accept" (its values) —
+// `firewall` and `secret` are handled separately in main since they don't
+// build a Node at all.
+var commandFlagSets = map[string][]flagReg{
+	"join":   {flagInterface, flagStateDir, flagLanIP, flagSecret, flagMeshIP, flagBootstrap, flagHostname, flagListenPort, flagControlPort},
+	"run":    {flagInterface, flagStateDir, flagLanIP},
+	"sync":   {flagInterface, flagStateDir, flagLanIP},
+	"forget": {flagInterface, flagStateDir, flagLanIP},
+	"leave":  {flagInterface, flagStateDir},
+	"probe":  {flagInterface, flagStateDir},
+	"status": {flagInterface, flagStateDir},
+}
+
+// commandFlags returns the flag set for cmd, one of commandFlagSets' keys.
+// Each subcommand registers only the flags newNode/cmdJoin actually read for
+// it — a flag with no effect on a subcommand is a parse error there, never a
+// silently-accepted no-op.
+func commandFlags(cmd string) (*flag.FlagSet, *opts) {
+	var o opts
+	fs := flag.NewFlagSet("wglan "+cmd, flag.ExitOnError)
+	fs.Usage = func() { fmt.Fprint(os.Stderr, usage); fs.PrintDefaults() }
+	for _, f := range commandFlagSets[cmd] {
+		f.reg(fs, &o)
+	}
+	return fs, &o
 }
 
 func main() {
@@ -98,6 +176,7 @@ func main() {
 	cmd := os.Args[1]
 	if cmd == "firewall" {
 		fs := flag.NewFlagSet("wglan firewall", flag.ExitOnError)
+		fs.Usage = func() { fmt.Fprint(os.Stderr, usage); fs.PrintDefaults() }
 		iface := fs.String("interface", "wglan0", "WireGuard interface name")
 		port := fs.Int("control-port", 51821, "TCP control-plane port")
 		if err := fs.Parse(os.Args[2:]); err != nil {
@@ -116,25 +195,16 @@ func main() {
 		fmt.Println(s)
 		return
 	}
+	if _, ok := commandFlagSets[cmd]; !ok {
+		fmt.Fprint(os.Stderr, usage)
+		os.Exit(2)
+	}
 
-	var o opts
-	fs := flag.NewFlagSet("wglan "+cmd, flag.ExitOnError)
-	fs.Usage = func() { fmt.Fprint(os.Stderr, usage); fs.PrintDefaults() }
-	fs.StringVar(&o.secret, "secret", "", "wglan://v1/... shared secret")
-	fs.StringVar(&o.meshIP, "mesh-ip", "", "this node's mesh address with mask, e.g. 10.90.0.3/24")
-	fs.StringVar(&o.bootstrap, "bootstrap", "", "any existing member's control address, IP:PORT")
-	fs.StringVar(&o.hostname, "hostname", "", "mesh hostname (default: the OS hostname)")
-	// No default here: an empty value is what lets the name join persisted
-	// win over the fallback. See resolveIface.
-	fs.StringVar(&o.iface, "interface", "", "WireGuard interface name (default: the one join used, else "+defaultIface+")")
-	fs.StringVar(&o.lanIP, "lan-ip", "", "this node's LAN address (default: first global unicast IPv4)")
-	fs.StringVar(&o.dir, "state-dir", "/var/lib/wglan", "where peers.json, private.key and secret live")
-	fs.StringVar(&o.hostsFile, "hosts-file", "/etc/hosts", "file holding the managed name block")
-	fs.IntVar(&o.listenPort, "listen-port", 51820, "WireGuard UDP data-plane port")
-	fs.IntVar(&o.controlPort, "control-port", 51821, "TCP control-plane port")
+	fs, op := commandFlags(cmd)
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		die(err)
 	}
+	o := *op
 	args := fs.Args()
 
 	n, fresh, err := newNode(cmd, o)
@@ -273,7 +343,7 @@ func newNode(cmd string, o opts) (*Node, bool, error) {
 		lanIP:  lan,
 		key:    key,
 		ver:    envelope.NewVerifier(key),
-		sys:    &Sys{Run: execRunner, Iface: iface, HostsPath: o.hostsFile},
+		sys:    &Sys{Run: execRunner, Iface: iface, HostsPath: defaultHostsPath},
 	}
 	return n, !existed, nil
 }

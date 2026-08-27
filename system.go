@@ -41,6 +41,9 @@ const (
 	hostsBegin = "# BEGIN wglan"
 	hostsEnd   = "# END wglan"
 	keepalive  = "25"
+	// defaultHostsPath is the only hosts file wglan ever manages. Not a flag:
+	// /etc/hosts is the same path on every Linux distribution wglan targets.
+	defaultHostsPath = "/etc/hosts"
 )
 
 // GenKey writes a fresh WireGuard keypair, returning the public key. WireGuard

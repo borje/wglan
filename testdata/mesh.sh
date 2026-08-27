@@ -15,6 +15,7 @@ MESH=10.90.0
 
 [ -x "$BIN" ] || { echo "build first: go build -o wglan ."; exit 1; }
 command -v wg >/dev/null || { echo "wireguard-tools not installed"; exit 1; }
+command -v unshare >/dev/null || { echo "unshare (util-linux) not installed"; exit 1; }
 
 cleanup() {
 	for i in $NODES; do
@@ -42,21 +43,32 @@ for i in $NODES; do
 done
 
 SECRET=$($BIN secret)
+# wglan always manages the real /etc/hosts (it's not a flag). All three nodes
+# here share one filesystem — only their network namespaces differ — so each
+# command gets its own mount namespace with a scratch file bind-mounted over
+# /etc/hosts, instead of writing the developer's real one.
+nsrun() { # nsrun <node> <wglan args...>
+	i=$1
+	shift
+	ip netns exec "wgl$i" unshare --mount \
+		sh -c 'mount --bind "$1" /etc/hosts && shift && exec "$@"' sh \
+		"$TMP/$i/hosts" "$BIN" "$@"
+}
+
 start() { # start <node> [bootstrap]
 	i=$1
 	boot=$2
-	set -- --state-dir "$TMP/$i" --hosts-file "$TMP/$i/hosts" --secret "$SECRET" \
+	set -- --state-dir "$TMP/$i" --secret "$SECRET" \
 		--mesh-ip "$MESH.$i/24" --hostname "node$i" --lan-ip "$LAN.$i"
 	if [ -n "$boot" ]; then
 		set -- "$@" --bootstrap "$boot"
 	fi
 	# The two steps a systemd unit takes: `join` sets the node up, announces it
 	# and returns; `run` is the long-lived control listener.
-	ip netns exec "wgl$i" "$BIN" join "$@" >"$TMP/$i/log" 2>&1
+	nsrun "$i" join "$@" >"$TMP/$i/log" 2>&1
 	# No --lan-ip or --interface here: join persisted both, and `run` reading
 	# them back is exactly what this exercises.
-	ip netns exec "wgl$i" "$BIN" run --state-dir "$TMP/$i" \
-		--hosts-file "$TMP/$i/hosts" >>"$TMP/$i/log" 2>&1 &
+	nsrun "$i" run --state-dir "$TMP/$i" >>"$TMP/$i/log" 2>&1 &
 	sleep 1
 }
 
@@ -87,9 +99,10 @@ for i in $NODES; do
 	done
 done
 
-# A LEAVE from node3 must remove it everywhere.
-ip netns exec wgl3 "$BIN" leave --state-dir "$TMP/3" --hosts-file "$TMP/3/hosts" \
-	--secret "$SECRET" --lan-ip "$LAN.3" >>"$TMP/3/log" 2>&1
+# A LEAVE from node3 must remove it everywhere. `leave` neither reads the
+# secret nor touches /etc/hosts (it only announces departure and drops its own
+# interface), so it takes none of start()'s flags or mount-namespace dance.
+ip netns exec wgl3 "$BIN" leave --state-dir "$TMP/3" >>"$TMP/3/log" 2>&1
 sleep 1
 for i in 1 2; do
 	peers=$(ip netns exec "wgl$i" wg show wglan0 peers | grep -c . || true)

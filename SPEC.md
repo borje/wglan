@@ -384,9 +384,12 @@ wglan probe   [PUBKEY|HOSTNAME]                mesh-wide reachability tally (eve
 wglan firewall                                print the nftables skeleton for this node
 ```
 
-Also on every subcommand: `--state-dir` (default `/var/lib/wglan`), `--hosts-file` (default
-`/etc/hosts`), and `--lan-ip` to override the detected LAN address on a multi-homed host. The first two exist so
-the whole binary is testable without root.
+Also on every subcommand: `--state-dir` (default `/var/lib/wglan`), so the whole binary is testable
+without root. `--lan-ip` overrides the detected LAN address on a multi-homed host, but only exists
+on `join`/`run`/`sync`/`forget` — the subcommands that can advertise our own LAN endpoint to a peer
+or rewrite the hosts block; `status`/`leave`/`probe` never touch either, so the flag would silently
+do nothing there. wglan always manages `/etc/hosts` — that path is not a flag, since it is the same
+on every Linux distribution wglan targets.
 
 `--interface` and `--lan-ip` resolve with the same precedence `--mesh-ip` uses: **the flag wins,
 then the value `join` persisted (§10), then the fallback** — `wglan0` for the interface, detection
@@ -397,7 +400,6 @@ A persisted `lan_ip` that is on no interface any more is reported and the detect
 instead — a `JOIN_REPLY` advertises this value and the receiver has nothing to observe it against
 (§4.3), so a stale one is handed to every future joiner. It is kept when nothing is detectable at
 all, so the subcommands that never touch the endpoint do not fail on a host whose NIC is down.
-
 
 `join` is idempotent, and precisely: it loads existing state, brings the interface and firewall
 skeleton up to match, and then fans out a `JOIN` **only** if `--bootstrap` was given or `--mesh-ip`

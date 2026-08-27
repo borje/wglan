@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -749,6 +750,56 @@ func TestOversizedInboundFrameIsDropped(t *testing.T) {
 	buf := make([]byte, 1)
 	if _, err := conn.Read(buf); err == nil {
 		t.Fatal("server sent a reply to an oversized frame")
+	}
+}
+
+func TestCommandFlagsAreScoped(t *testing.T) {
+	t.Parallel()
+	// Every subcommand's flag set must contain exactly the flags newNode/
+	// cmdJoin read for that command — nothing extra that would silently do
+	// nothing when passed (e.g. --mesh-ip on `status`, --secret on `forget`).
+	always := []string{"interface", "state-dir"}
+	writesHosts := []string{"lan-ip"} // reaches n.self() to advertise our LAN endpoint
+	joinOnly := []string{"secret", "mesh-ip", "bootstrap", "hostname", "listen-port", "control-port"}
+
+	tests := []struct {
+		cmd    string
+		extras []string // beyond `always`
+	}{
+		{"join", append(append([]string{}, writesHosts...), joinOnly...)},
+		{"run", writesHosts},
+		{"sync", writesHosts},
+		{"forget", writesHosts},
+		{"leave", nil},
+		{"probe", nil},
+		{"status", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.cmd, func(t *testing.T) {
+			fs, _ := commandFlags(tt.cmd)
+			want := map[string]bool{}
+			for _, f := range always {
+				want[f] = true
+			}
+			for _, f := range tt.extras {
+				want[f] = true
+			}
+			got := map[string]bool{}
+			fs.VisitAll(func(f *flag.Flag) { got[f.Name] = true })
+			if len(got) != len(want) {
+				t.Errorf("%s: got %d flags %v, want %d %v", tt.cmd, len(got), got, len(want), want)
+			}
+			for name := range want {
+				if !got[name] {
+					t.Errorf("%s: missing flag --%s", tt.cmd, name)
+				}
+			}
+			for name := range got {
+				if !want[name] {
+					t.Errorf("%s: has flag --%s with no effect on this command", tt.cmd, name)
+				}
+			}
+		})
 	}
 }
 
