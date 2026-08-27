@@ -450,7 +450,7 @@
             <tr><td class="fname">✅ wglan leave</td><td>Seals a <code>LEAVE</code>, fans out to every peer, then deletes the <code>wglan0</code> interface after announcing.</td></tr>
             <tr><td class="fname">✅ LEAVE bound to tunnel + sender's own mesh IP</td><td>Otherwise any member could evict any other — WireGuard's cryptokey routing proves the sender before wglan code runs (SPEC §6.1).</td></tr>
             <tr><td class="fname">✅ wglan forget &lt;pubkey&gt;</td><td>Operator cleanup for a node that's already gone.</td></tr>
-            <tr><td class="fname">✅ wglan sync</td><td>Repairs a missing edge after two joins race — the <code>JOIN</code> path, outside the tunnel, envelope as its only authentication.</td></tr>
+            <tr><td class="fname">✅ wglan sync</td><td>Repairs a missing edge after two joins race — the <code>JOIN</code> path, outside the tunnel, envelope as its only authentication. Fans out exactly as a join does, so one invocation on either node closes the edge in both directions; without that it would teach us about a peer and leave the peer ignorant of us, which in WireGuard means no handshake either way.</td></tr>
             <tr><td class="fname">✅ wglan probe</td><td>Liveness corroboration across peers; in-tunnel and source-bound like <code>LEAVE</code>, not a repurposed <code>sync</code>.</td></tr>
           </tbody>
         </table>

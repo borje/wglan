@@ -769,6 +769,42 @@ func knows(n *Node, other *Node) bool {
 	return n.st.byPubkey(other.st.Self.Pubkey) >= 0
 }
 
+// SPEC §5.1: a node that joined earlier has a frozen peer list and never hears
+// about a later joiner — nothing pushes, nothing reconciles. `sync` is named as
+// the repair, so it has to greet everyone it learns about, not just the target;
+// otherwise the missing edge stays missing in the direction that matters.
+func TestSyncFansOutToCloseAMissingEdge(t *testing.T) {
+	key := mustKey(t)
+	n1, _ := testNode(t, key, 1) // the bootstrap both used
+	n4, _ := testNode(t, key, 4) // joined first; its list is frozen
+	n2, _ := testNode(t, key, 2) // joined later; node4 never heard of it
+	listen(t, n1)
+	listen(t, n2)
+	listen(t, n4)
+
+	boot := n1.self().ControlAddr()
+	if err := n4.joinTo(boot); err != nil { // no fan-out: node4 greets only node1
+		t.Fatal(err)
+	}
+	if err := n2.joinTo(boot); err != nil { // no fan-out: node2 greets only node1
+		t.Fatal(err)
+	}
+	if knows(n4, n2) {
+		t.Fatal("precondition: node4 must not know node2 yet")
+	}
+
+	if err := n2.cmdSync(boot); err != nil {
+		t.Fatal(err)
+	}
+
+	if !knows(n2, n4) {
+		t.Error("node2 did not learn node4 from the sync reply")
+	}
+	if !knows(n4, n2) {
+		t.Error("node4 still does not know node2 — sync did not fan out")
+	}
+}
+
 // `join` sets up and announces, then returns. It must not end in serve(): the
 // control listener belongs to `run`, which is what systemd supervises, and a
 // join that never returns cannot be used to repair a node whose daemon is up.

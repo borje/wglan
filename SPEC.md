@@ -250,8 +250,9 @@ is simply missing, and with no reconcile loop nothing notices. Unioning all fan-
 narrows the window but cannot close it.
 
 This is a property of a purely reactive runtime, not a bug to fix with more protocol. The answer
-is `sync` (§7), run once after a batch of joins. Operational rule: **add nodes one at a time, or
-run `sync` afterwards.**
+is `sync` (§7), run once on either of the two nodes after a batch of joins — `sync` fans out
+exactly as a join does, so one invocation closes the edge in both directions. Operational rule:
+**add nodes one at a time, or run `sync` afterwards.**
 
 ## 6. Leave
 
@@ -298,10 +299,17 @@ The absence of a reconcile loop must not mean the absence of any way to fix stat
 these are manual, run to completion, and add no timers.
 
 - **`wglan sync <peer-ip:port>`** — sends the ordinary `JOIN`, unions the returned list, applies
-  the difference (`wg set` per new peer, rewrite the hosts block). Because `JOIN` is already
-  symmetric, `sync` is the join path with "already known is not an error" — not a new protocol.
-  This is the fix for a missing edge after concurrent joins, and for a node whose `peers.json` was
-  lost or is stale. It runs **outside** the tunnel, for the reason in §13.
+  the difference (`wg set` per new peer, rewrite the hosts block), then fans out to everyone the
+  reply named, exactly as a join does. Because `JOIN` is already symmetric, `sync` is the join path
+  with "already known is not an error" — not a new protocol. It is precisely
+  `join --bootstrap <peer>` on a node that already has state, and exists as its own verb because
+  that is the name an operator looks for. This is the fix for a missing edge after concurrent
+  joins, and for a node whose `peers.json` was lost or is stale. It runs **outside** the tunnel,
+  for the reason in §13.
+
+  The fan-out is not optional. A member that joined before us has a frozen peer list and is told
+  about later joiners by nobody — without it, `sync` teaches us about them and leaves them ignorant
+  of us, which in WireGuard means no handshake in either direction.
 - **`wglan forget <pubkey>`** — removes that peer from `peers.json`, the hosts block, and the
   interface. Run per node. Bounded local state cleanup, **not revocation**: a node that still
   holds the secret can rejoin.
@@ -367,7 +375,7 @@ wglan join    --secret S --mesh-ip A/M [--bootstrap IP:PORT] [--hostname H]
               [--interface wglan0] [--listen-port 51820] [--control-port 51821]
 wglan run                                     serve the control listener from persisted state
 wglan status                                  per-peer view, with stale marking
-wglan sync    IP:PORT                         pull + apply peer-list difference
+wglan sync    IP:PORT                         re-announce to one member and re-apply its list
 wglan forget  PUBKEY                          local removal of one peer
 wglan leave                                   announce departure to every peer, then remove the interface
 wglan probe   PUBKEY|HOSTNAME                 mesh-wide reachability tally

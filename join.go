@@ -238,6 +238,18 @@ func (n *Node) joinTo(addr string) error {
 	return nil
 }
 
+// cmdSync is the repair path of SPEC §7 and the answer to the missing edge in
+// §5.1: one JOIN to a reachable member, then the same fan-out a join does. The
+// fan-out is the half that matters — a peer that joined before us has a frozen
+// list and learns about us from nobody else.
+func (n *Node) cmdSync(addr string) error {
+	if err := n.joinTo(addr); err != nil {
+		return err
+	}
+	n.fanout(addr)
+	return nil
+}
+
 // fanout greets every peer we now know about, so each one adds us independently.
 func (n *Node) fanout(skip string) {
 	n.mu.Lock()

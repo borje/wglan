@@ -56,7 +56,7 @@ const usage = `wglan — a minimal WireGuard mesh for a LAN with no internet acc
   wglan join                            set up and announce this node, then exit
   wglan run                             serve the control listener from persisted state
   wglan status                          per-peer view, with stale marking
-  wglan sync    IP:PORT                 pull + apply peer-list difference
+  wglan sync    IP:PORT                 re-announce to one member and re-apply its list
   wglan forget  PUBKEY                  local removal of one peer
   wglan leave                           announce departure to every peer, then remove the interface
   wglan probe   PUBKEY|HOSTNAME         mesh-wide reachability tally
@@ -149,7 +149,7 @@ func main() {
 		if len(args) != 1 {
 			die(errors.New("usage: wglan sync IP:PORT"))
 		}
-		die(n.joinTo(args[0]))
+		die(n.cmdSync(args[0]))
 	case "forget":
 		if len(args) != 1 {
 			die(errors.New("usage: wglan forget PUBKEY"))

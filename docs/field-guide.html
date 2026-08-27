@@ -653,6 +653,14 @@
           only authentication.
         </p>
         <p>
+          It is also the <em>whole</em> join path, fan-out included &mdash; precisely
+          <code>join --bootstrap</code> on a node that already has state. A member that joined
+          before us holds a frozen peer list and is told about later joiners by nobody, so a
+          <code>sync</code> that only talked to its target would teach us about that member and
+          leave the member ignorant of us. In WireGuard that is not a half-repaired edge, it is no
+          handshake in either direction.
+        </p>
+        <p>
           <code>leave</code> and <code>probe</code> only ever address peers already in
           <code>peers.json</code>, so those two do travel inside it: cryptokey routing has already
           authenticated the sender before a single line of wglan code runs, and the envelope is
