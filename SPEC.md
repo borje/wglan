@@ -380,8 +380,15 @@ the whole binary is testable without root.
 
 `join` is idempotent, and precisely: it loads existing state, brings the interface and firewall
 skeleton up to match, and then fans out a `JOIN` **only** if `--bootstrap` was given or `--mesh-ip`
-differs from the persisted value. With neither, it is exactly `run` — a restart makes no network
-round trip.
+differs from the persisted value. With neither, it is bring-up and nothing else — a restart makes
+no network round trip.
+
+`join` then **returns**; it does not serve. The control listener belongs to `run` alone, which is
+the process a service manager supervises. Draft 2 had `join` end in the serve loop, which made the
+one-command first run pretty and everything after it awkward: the command never returned, and it
+could not be re-run against a node whose daemon already held the control port — which is exactly
+when a repair is wanted. Bringing a node up is therefore two steps, `join` then `run`, and `sync`
+is `join --bootstrap` under the name an operator will look for.
 
 The secret is taken from `--secret`, else `$WGLAN_SECRET`, else `<state-dir>/secret`, where `join`
 persists it. Without that last step `run` could not serve the listener after a reboot without an

@@ -16,10 +16,15 @@ wglan firewall > /etc/nftables.d/wglan.conf && nft -f $_       # once per host
 wglan join --secret wglan://v1/... --mesh-ip 10.90.0.1/24      # first node
 wglan join --secret wglan://v1/... --mesh-ip 10.90.0.2/24 \
            --bootstrap 192.168.1.21:51821                       # every node after
+install -m755 wglan /usr/bin/wglan                              # once, per host
+install -m644 systemd/wglan.service /etc/systemd/system/        # once, per host
+systemctl enable --now wglan                                    # `wglan run`
 curl https://node1.mesh                                         # from node2
 ```
 
-The second command is the entire mesh. The third is the only one you repeat.
+The third command is the entire mesh, and the only one you repeat. `join` sets the node up and
+returns; `run` is the long-lived process, so bringing a node up is those two steps and nothing
+else.
 
 ## What you get
 

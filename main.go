@@ -52,15 +52,19 @@ func renderFirewall(iface string, controlPort int) (string, error) {
 
 const usage = `wglan — a minimal WireGuard mesh for a LAN with no internet access
 
-  wglan secret                                  print a fresh wglan://v1/... secret
-  wglan join   --mesh-ip A/M [--bootstrap IP:PORT] [--secret S] [--hostname H]
-  wglan run                                     serve the control listener from persisted state
-  wglan status                                  per-peer view, with stale marking
-  wglan sync   IP:PORT                          pull + apply peer-list difference
-  wglan forget PUBKEY                           local removal of one peer
-  wglan leave                                   announce departure to every peer, then remove the interface
-  wglan probe  PUBKEY|HOSTNAME                  mesh-wide reachability tally
-  wglan firewall                                print the nftables skeleton for this node
+  wglan secret                          print a fresh wglan://v1/... secret
+  wglan join                            set up and announce this node, then exit
+  wglan run                             serve the control listener from persisted state
+  wglan status                          per-peer view, with stale marking
+  wglan sync    IP:PORT                 pull + apply peer-list difference
+  wglan forget  PUBKEY                  local removal of one peer
+  wglan leave                           announce departure to every peer, then remove the interface
+  wglan probe   PUBKEY|HOSTNAME         mesh-wide reachability tally
+  wglan firewall                        print the nftables skeleton for this node
+
+"join" sets this node up and returns; "run" is the long-lived process, and is
+what a systemd unit should start. Re-running "join" against an already-joined
+node is safe, and is how you re-announce after renumbering.
 
 The secret may be given with --secret, in $WGLAN_SECRET, or read from
 <state-dir>/secret, where join persists it so a reboot needs no operator.
@@ -348,8 +352,11 @@ func (n *Node) bringUp() error {
 	return n.sys.WriteHosts(append(slices.Clone(n.st.Peers), n.self()))
 }
 
-// cmdJoin is idempotent: with existing state and no new address or bootstrap
-// target it is exactly `run`.
+// cmdJoin sets this node up and announces it, then returns. Serving is `run`'s
+// job alone (SPEC §9): a join that ended in serve() could not be re-run against
+// a node whose daemon already holds the control port, which is exactly when a
+// repair is wanted. With existing state and no new address or bootstrap target
+// it is bring-up and nothing else.
 func (n *Node) cmdJoin(o opts, fresh bool) error {
 	renumbered := false
 	if !fresh {
@@ -373,7 +380,7 @@ func (n *Node) cmdJoin(o opts, fresh bool) error {
 	case fresh:
 		log.Printf("first node: %s is %s, no bootstrap target given", n.st.Self.Hostname, n.st.Self.MeshIP)
 	}
-	return n.serve()
+	return nil
 }
 
 func (n *Node) cmdRun() error {

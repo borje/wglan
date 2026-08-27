@@ -442,7 +442,8 @@
         <table class="wide-table">
           <thead><tr><th style="width:34%">Feature</th><th>Notes</th></tr></thead>
           <tbody>
-            <tr><td class="fname">✅ wglan join</td><td>Full mesh from one bootstrap IP — the joiner unions the peer list it's handed and greets every member directly.</td></tr>
+            <tr><td class="fname">✅ wglan join</td><td>Full mesh from one bootstrap IP — the joiner unions the peer list it's handed and greets every member directly, then <em>returns</em>. Setup is a command that finishes, not a process.</td></tr>
+            <tr><td class="fname">✅ wglan run</td><td>The long-lived control listener, and the only thing a service manager supervises. Splitting it from <code>join</code> is what lets every other verb be re-run against a node whose daemon already holds the port.</td></tr>
             <tr><td class="fname">✅ Duplicate-address / colliding-pubkey rejection</td><td>No exemption for an already-known pubkey (SPEC §3.4) — the draft-1 bug that let a member move a victim's address onto its own key.</td></tr>
             <tr><td class="fname">✅ <code>peers.json</code> atomic load/save</td><td>Restart reloads directly, no network round trip, no re-bootstrap.</td></tr>
             <tr><td class="fname">✅ Managed <code>/etc/hosts</code> block</td><td><code>&lt;node&gt;.mesh</code> entries; everything outside the markers survives byte-for-byte, even against a hostile file.</td></tr>

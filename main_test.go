@@ -761,3 +761,37 @@ func pubN(t *testing.T, i int) string {
 	}
 	return pub
 }
+
+// knows reports whether n has a peer entry for other.
+func knows(n *Node, other *Node) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.st.byPubkey(other.st.Self.Pubkey) >= 0
+}
+
+// `join` sets up and announces, then returns. It must not end in serve(): the
+// control listener belongs to `run`, which is what systemd supervises, and a
+// join that never returns cannot be used to repair a node whose daemon is up.
+func TestJoinReturnsInsteadOfServing(t *testing.T) {
+	key := mustKey(t)
+	n1, _ := testNode(t, key, 1)
+	n2, _ := testNode(t, key, 2)
+	listen(t, n1)
+	listen(t, n2) // n2's port is taken, so a serving cmdJoin blocks or collides
+
+	done := make(chan error, 1)
+	go func() {
+		done <- n2.cmdJoin(opts{dir: n2.dir, bootstrap: n1.self().ControlAddr()}, true)
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("cmdJoin returned an error, want a clean return after announcing: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cmdJoin did not return — it is still serving")
+	}
+	if !knows(n1, n2) {
+		t.Error("cmdJoin returned but never announced us to the bootstrap")
+	}
+}

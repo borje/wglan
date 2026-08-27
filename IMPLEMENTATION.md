@@ -20,6 +20,8 @@ envelope/envelope.go    seal/open, HKDF, freshness, seen-set, field validation
 envelope/envelope_test.go
 firewall_test.go        guards the embedded ruleset; `nft -c -f` it when run as root
 nftables/wglan.conf     the firewall skeleton, embedded and printed by `wglan firewall`
+systemd_test.go         guards the shipped unit; `systemd-analyze verify` when installed
+systemd/wglan.service   the shipped unit; operator copies it to /etc/systemd/system/
 testdata/mesh.sh        three netns end-to-end; needs root and wireguard-tools
 ```
 
@@ -61,8 +63,9 @@ firewall is not part of bring-up: `wglan firewall` prints a ruleset and the oper
 (SPEC §12.5).
 
 *Accept:* on one host, `wglan join --mesh-ip 10.90.0.1/24 --secret ...` with no `--bootstrap`
-brings up `wglan0` holding the address; `wg show wglan0` lists it with no peers; kill and rerun —
-it comes back from `peers.json` without touching the network. Second run must be silent about
+brings up `wglan0` holding the address **and returns**; `wg show wglan0` lists it with no peers;
+`wglan run` then serves and can be killed and restarted — it comes back from `peers.json` without
+touching the network. Second run must be silent about
 everything already correct. Separately: `wglan firewall | diff - nftables/wglan.conf` is empty, and
 `sudo nft -c -f <(wglan firewall)` passes.
 

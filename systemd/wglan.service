@@ -1,0 +1,14 @@
+[Unit]
+Description=wglan mesh daemon
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/wglan/peers.json
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wglan run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

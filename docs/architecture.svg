@@ -75,7 +75,7 @@
   <text class="label-identity" x="500" y="90" text-anchor="middle">node1.mesh &#183; 10.90.0.1</text>
   <line class="divider" x1="400" y1="104" x2="600" y2="104"></line>
   <text class="label-row" x="400" y="124">wglan0 &#183; UDP 51820</text>
-  <text class="label-row" x="400" y="144">join listener &#183; TCP 7946 (idle)</text>
+  <text class="label-row" x="400" y="144">wglan run &#183; TCP 51821 (idle)</text>
   <text class="label-row" x="400" y="164">peers.json (persisted)</text>
 
   <!-- node2 -->
@@ -84,7 +84,7 @@
   <text class="label-identity" x="220" y="390" text-anchor="middle">node2.mesh &#183; 10.90.0.2</text>
   <line class="divider" x1="80" y1="404" x2="360" y2="404"></line>
   <text class="label-row" x="80" y="424">wglan0 &#183; UDP 51820</text>
-  <text class="label-row" x="80" y="444">join listener &#183; TCP 7946 (idle)</text>
+  <text class="label-row" x="80" y="444">wglan run &#183; TCP 51821 (idle)</text>
   <rect class="dockerbox" x="80" y="460" width="260" height="68" rx="3"></rect>
   <text class="label-docker-tag" x="94" y="478">docker</text>
   <text class="label-docker-name" x="94" y="498">nginx</text>
@@ -96,6 +96,6 @@
   <text class="label-identity" x="780" y="390" text-anchor="middle">node3.mesh &#183; 10.90.0.3</text>
   <line class="divider" x1="640" y1="404" x2="920" y2="404"></line>
   <text class="label-row" x="640" y="424">wglan0 &#183; UDP 51820</text>
-  <text class="label-row" x="640" y="444">join listener &#183; TCP 7946 (idle)</text>
+  <text class="label-row" x="640" y="444">wglan run &#183; TCP 51821 (idle)</text>
   <text class="label-row" x="640" y="464">peers.json (persisted)</text>
 </svg>

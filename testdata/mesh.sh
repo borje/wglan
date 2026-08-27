@@ -50,7 +50,11 @@ start() { # start <node> [bootstrap]
 	if [ -n "$boot" ]; then
 		set -- "$@" --bootstrap "$boot"
 	fi
-	ip netns exec "wgl$i" "$BIN" join "$@" >"$TMP/$i/log" 2>&1 &
+	# The two steps a systemd unit takes: `join` sets the node up, announces it
+	# and returns; `run` is the long-lived control listener.
+	ip netns exec "wgl$i" "$BIN" join "$@" >"$TMP/$i/log" 2>&1
+	ip netns exec "wgl$i" "$BIN" run --state-dir "$TMP/$i" \
+		--hosts-file "$TMP/$i/hosts" --lan-ip "$LAN.$i" >>"$TMP/$i/log" 2>&1 &
 	sleep 1
 }
 
