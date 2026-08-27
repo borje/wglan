@@ -769,7 +769,7 @@ func TestCommandFlagsAreScoped(t *testing.T) {
 		{"join", append(append([]string{}, writesHosts...), joinOnly...)},
 		{"run", writesHosts},
 		{"sync", writesHosts},
-		{"forget", writesHosts},
+		{"forget", nil},
 		{"leave", nil},
 		{"probe", nil},
 		{"status", nil},

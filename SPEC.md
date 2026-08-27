@@ -386,10 +386,11 @@ wglan firewall                                print the nftables skeleton for th
 
 Also on every subcommand: `--state-dir` (default `/var/lib/wglan`), so the whole binary is testable
 without root. `--lan-ip` overrides the detected LAN address on a multi-homed host, but only exists
-on `join`/`run`/`sync`/`forget` — the subcommands that can advertise our own LAN endpoint to a peer
-or rewrite the hosts block; `status`/`leave`/`probe` never touch either, so the flag would silently
-do nothing there. wglan always manages `/etc/hosts` — that path is not a flag, since it is the same
-on every Linux distribution wglan targets.
+on `join`/`run`/`sync` — the subcommands that can send our own LAN endpoint over the wire in a
+`JOIN` or `JOIN_REPLY`; `status`/`leave`/`probe`/`forget` never advertise it, so the flag would
+silently do nothing there. wglan always manages `/etc/hosts` — that path is not a flag, since it is
+the same on every Linux distribution wglan targets, and the hosts block never carries the LAN
+endpoint anyway (it maps mesh addresses to hostnames, not LAN reachability).
 
 `--interface` and `--lan-ip` resolve with the same precedence `--mesh-ip` uses: **the flag wins,
 then the value `join` persisted (§10), then the fallback** — `wglan0` for the interface, detection

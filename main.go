@@ -110,9 +110,10 @@ var (
 	flagStateDir = flagReg{"state-dir", func(fs *flag.FlagSet, o *opts) {
 		fs.StringVar(&o.dir, "state-dir", "/var/lib/wglan", "where peers.json, private.key and secret live")
 	}}
-	// --lan-ip only matters on a path that calls n.self() to advertise our own
-	// LAN endpoint — join/run/sync always can, and forget rewrites the hosts
-	// block (which includes our own entry) too.
+	// --lan-ip only matters on join/run/sync: they can send n.self() over the
+	// wire (a JOIN or JOIN_REPLY), which is what advertises our LAN endpoint to
+	// a peer. forget also calls n.self(), but only to rewrite the hosts block,
+	// which reads Hostname/MeshIP off it and never touches LANEndpoint.
 	flagLanIP = flagReg{"lan-ip", func(fs *flag.FlagSet, o *opts) {
 		fs.StringVar(&o.lanIP, "lan-ip", "", "this node's LAN address (default: first global unicast IPv4)")
 	}}
@@ -147,7 +148,7 @@ var commandFlagSets = map[string][]flagReg{
 	"join":   {flagInterface, flagStateDir, flagLanIP, flagSecret, flagMeshIP, flagBootstrap, flagHostname, flagListenPort, flagControlPort},
 	"run":    {flagInterface, flagStateDir, flagLanIP},
 	"sync":   {flagInterface, flagStateDir, flagLanIP},
-	"forget": {flagInterface, flagStateDir, flagLanIP},
+	"forget": {flagInterface, flagStateDir},
 	"leave":  {flagInterface, flagStateDir},
 	"probe":  {flagInterface, flagStateDir},
 	"status": {flagInterface, flagStateDir},
