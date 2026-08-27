@@ -19,6 +19,12 @@ type Self struct {
 	MeshIP      string `json:"mesh_ip"`
 	ListenPort  int    `json:"listen_port"`
 	ControlPort int    `json:"control_port"`
+	// Iface and LANIP are settled on join and read back verbatim, like the
+	// ports above — not re-derived on every start. Both are omitempty so a
+	// state file written before they existed still loads, and falls through to
+	// the default and to detection respectively.
+	Iface string `json:"iface,omitempty"`
+	LANIP string `json:"lan_ip,omitempty"`
 }
 
 // State is the whole of /var/lib/wglan/peers.json.

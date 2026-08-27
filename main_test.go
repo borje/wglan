@@ -877,3 +877,98 @@ func TestProbeAllTargetsEveryPeer(t *testing.T) {
 		t.Errorf("want 2 tally lines (one per peer), got %d:\n%s", n, out)
 	}
 }
+
+// ---------------------------------------------------------------- identity settled at join
+
+// The LAN address and interface name are settled on join and read back verbatim
+// afterwards, exactly like the mesh IP and the ports. Re-deriving them on every
+// start is what let a host that grew a docker0 between join and reboot come back
+// advertising a different endpoint, silently.
+func TestResolveLANIP(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, flag, stored string
+		cands              []string
+		want               string
+		wantErr            bool
+	}{
+		{"flag beats stored and detection", "10.0.0.9", "10.0.0.2", []string{"10.0.0.3"}, "10.0.0.9", false},
+		{"stored beats detection", "", "10.0.0.2", []string{"10.0.0.3", "10.0.0.2"}, "10.0.0.2", false},
+		{"stored no longer on any interface falls back", "", "10.0.0.2", []string{"10.0.0.7"}, "10.0.0.7", false},
+		{"stored kept when nothing is detectable", "", "10.0.0.2", nil, "10.0.0.2", false},
+		{"detects when nothing is stored", "", "", []string{"10.0.0.5"}, "10.0.0.5", false},
+		{"first join with no address at all is fatal", "", "", nil, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveLANIP(tc.flag, tc.stored, tc.cands)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("got %q, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveIface(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, flag, stored, want string }{
+		{"flag beats stored", "wglan7", "wglan3", "wglan7"},
+		{"stored beats the default", "", "wglan3", "wglan3"},
+		{"default when neither", "", "", "wglan0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := resolveIface(tc.flag, tc.stored); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// A node that joined on a non-default interface must come back on it. Before
+// this, `wglan run` silently built a second, empty wglan0. The LAN address is
+// asserted only as "resolved without dying" here — which value wins is covered
+// exhaustively by TestResolveLANIP, and cannot be pinned in an integration test
+// without depending on the addresses of whatever host runs it.
+func TestNewNodeUsesStoredIfaceAndLANIP(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if _, err := GenKey(keyPath(dir)); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := envelope.NewSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "secret"), []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st := State{Self: Self{
+		Pubkey: "x", Hostname: "node1", MeshIP: "10.90.0.1/24",
+		ListenPort: 51820, ControlPort: 51821,
+		Iface: "wglan7", LANIP: "10.0.0.2",
+	}}
+	if err := saveState(dir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	n, _, err := newNode("status", opts{dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.sys.Iface != "wglan7" {
+		t.Errorf("interface %q, want the stored wglan7", n.sys.Iface)
+	}
+	if n.lanIP == "" {
+		t.Error("lanIP is empty — a non-join command must resolve one or fail loudly")
+	}
+}

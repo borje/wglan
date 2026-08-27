@@ -388,6 +388,17 @@ Also on every subcommand: `--state-dir` (default `/var/lib/wglan`), `--hosts-fil
 `/etc/hosts`), and `--lan-ip` to override the detected LAN address on a multi-homed host. The first two exist so
 the whole binary is testable without root.
 
+`--interface` and `--lan-ip` resolve with the same precedence `--mesh-ip` uses: **the flag wins,
+then the value `join` persisted (§10), then the fallback** — `wglan0` for the interface, detection
+for the LAN address. Neither is re-derived on every start, because both are identity: a node joined
+on `wglan7` that came back on `wglan0` built a second, empty interface and said nothing, and a host
+that grew a `docker0` between join and reboot started advertising a different endpoint the same way.
+A persisted `lan_ip` that is on no interface any more is reported and the detected address used
+instead — a `JOIN_REPLY` advertises this value and the receiver has nothing to observe it against
+(§4.3), so a stale one is handed to every future joiner. It is kept when nothing is detectable at
+all, so the subcommands that never touch the endpoint do not fail on a host whose NIC is down.
+
+
 `join` is idempotent, and precisely: it loads existing state, brings the interface and firewall
 skeleton up to match, and then fans out a `JOIN` **only** if `--bootstrap` was given or `--mesh-ip`
 differs from the persisted value. With neither, it is bring-up and nothing else — a restart makes
@@ -438,11 +449,16 @@ never sent to another node. Transfer totals are shown, not gated on (§8).
 ```json
 {
   "self":  {"pubkey": "...", "hostname": "node3", "mesh_ip": "10.90.0.3/24",
-            "listen_port": 51820, "control_port": 51821},
+            "listen_port": 51820, "control_port": 51821,
+            "iface": "wglan0", "lan_ip": "192.168.1.23"},
   "peers": [{"pubkey": "...", "hostname": "node1", "mesh_ip": "10.90.0.1",
              "lan_endpoint": "192.168.1.21:51820"}]
 }
 ```
+
+`iface` and `lan_ip` are settled on join and read back verbatim, like the ports beside them: this
+node's identity is fixed at join, not re-derived on every start. Both are omitted when empty, so a
+state file written before they existed still loads and falls through to the old behaviour.
 
 Private key: `/var/lib/wglan/private.key`, mode `0600`, directory `0700`. Shared secret:
 `/var/lib/wglan/secret`, same modes, written by `join` so `run` needs no operator after a reboot

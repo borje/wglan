@@ -31,6 +31,8 @@ var firewallConf string
 // The two lines `wglan firewall` rewrites. Named constants so a change to the
 // conf file that breaks the substitution fails loudly instead of silently
 // printing a ruleset that ignores the flags.
+const defaultIface = "wglan0"
+
 const (
 	defaultIfaceLine = `define WGLAN_IFACE = "wglan0"`
 	defaultPortLine  = `define WGLAN_CONTROL_PORT = 51821`
@@ -122,7 +124,9 @@ func main() {
 	fs.StringVar(&o.meshIP, "mesh-ip", "", "this node's mesh address with mask, e.g. 10.90.0.3/24")
 	fs.StringVar(&o.bootstrap, "bootstrap", "", "any existing member's control address, IP:PORT")
 	fs.StringVar(&o.hostname, "hostname", "", "mesh hostname (default: the OS hostname)")
-	fs.StringVar(&o.iface, "interface", "wglan0", "WireGuard interface name")
+	// No default here: an empty value is what lets the name join persisted
+	// win over the fallback. See resolveIface.
+	fs.StringVar(&o.iface, "interface", "", "WireGuard interface name (default: the one join used, else "+defaultIface+")")
 	fs.StringVar(&o.lanIP, "lan-ip", "", "this node's LAN address (default: first global unicast IPv4)")
 	fs.StringVar(&o.dir, "state-dir", "/var/lib/wglan", "where peers.json, private.key and secret live")
 	fs.StringVar(&o.hostsFile, "hosts-file", "/etc/hosts", "file holding the managed name block")
@@ -245,14 +249,21 @@ func newNode(cmd string, o opts) (*Node, bool, error) {
 		st.Self.Pubkey = pub
 	}
 
-	lan := o.lanIP
-	if lan == "" {
-		if lan, err = detectLANIP(o.iface); err != nil {
-			return nil, false, err
-		}
+	// Interface first: it is what LAN-address detection has to exclude.
+	iface := resolveIface(o.iface, st.Self.Iface)
+	cands, err := lanCandidates(iface)
+	if err != nil {
+		return nil, false, err
+	}
+	lan, err := resolveLANIP(o.lanIP, st.Self.LANIP, cands)
+	if err != nil {
+		return nil, false, err
 	}
 	if _, err := netip.ParseAddr(lan); err != nil {
 		return nil, false, fmt.Errorf("--lan-ip %q: %w", lan, err)
+	}
+	if cmd == "join" {
+		st.Self.Iface, st.Self.LANIP = iface, lan
 	}
 
 	n := &Node{
@@ -262,7 +273,7 @@ func newNode(cmd string, o opts) (*Node, bool, error) {
 		lanIP:  lan,
 		key:    key,
 		ver:    envelope.NewVerifier(key),
-		sys:    &Sys{Run: execRunner, Iface: o.iface, HostsPath: o.hostsFile},
+		sys:    &Sys{Run: execRunner, Iface: iface, HostsPath: o.hostsFile},
 	}
 	return n, !existed, nil
 }
@@ -311,11 +322,15 @@ func ensureKeypair(path string) (string, error) {
 
 // detectLANIP picks the first global-unicast IPv4 that is not on the mesh
 // interface. --lan-ip overrides it.
-func detectLANIP(exclude string) (string, error) {
+// lanCandidates lists this host's usable IPv4 addresses, best first. One
+// function serves both jobs: detection takes the head, and verifying a
+// persisted address asks whether it is still in the set.
+func lanCandidates(exclude string) ([]string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	var out []string
 	for _, ifc := range ifaces {
 		if ifc.Name == exclude || ifc.Flags&net.FlagLoopback != 0 || ifc.Flags&net.FlagUp == 0 {
 			continue
@@ -331,11 +346,53 @@ func detectLANIP(exclude string) (string, error) {
 			}
 			v4 := ipn.IP.To4()
 			if v4 != nil && v4.IsGlobalUnicast() && !v4.IsLinkLocalUnicast() {
-				return v4.String(), nil
+				out = append(out, v4.String())
 			}
 		}
 	}
-	return "", errors.New("no LAN address found — pass --lan-ip")
+	return out, nil
+}
+
+// resolveIface settles the interface name: the flag wins, then what join
+// persisted, then the default. Without the persisted step, a node joined on
+// wglan7 came back on wglan0 after a reboot — a second, empty interface, and no
+// error to say so.
+func resolveIface(flag, stored string) string {
+	switch {
+	case flag != "":
+		return flag
+	case stored != "":
+		return stored
+	default:
+		return defaultIface
+	}
+}
+
+// resolveLANIP settles the address we advertise as our endpoint, with the same
+// precedence --mesh-ip uses: the flag wins, then what join persisted, then
+// detection. A persisted address that is on no interface any more is a DHCP move
+// or a re-cabling; say so and use reality, because a JOIN_REPLY advertises this
+// value and the receiver has nothing to observe it against (SPEC §4.3). Keeping
+// it when nothing is detectable is deliberate: status, leave and probe never
+// touch the endpoint, and must not fail on a host whose NIC is down.
+func resolveLANIP(flag, stored string, cands []string) (string, error) {
+	if flag != "" {
+		return flag, nil
+	}
+	if stored != "" {
+		if slices.Contains(cands, stored) {
+			return stored, nil
+		}
+		if len(cands) > 0 {
+			log.Printf("lan-ip %s is on no interface any more, advertising %s instead", stored, cands[0])
+			return cands[0], nil
+		}
+		return stored, nil
+	}
+	if len(cands) == 0 {
+		return "", errors.New("no LAN address found — pass --lan-ip")
+	}
+	return cands[0], nil
 }
 
 // bringUp makes the host match our state, idempotently and silently where it

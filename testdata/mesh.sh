@@ -53,8 +53,10 @@ start() { # start <node> [bootstrap]
 	# The two steps a systemd unit takes: `join` sets the node up, announces it
 	# and returns; `run` is the long-lived control listener.
 	ip netns exec "wgl$i" "$BIN" join "$@" >"$TMP/$i/log" 2>&1
+	# No --lan-ip or --interface here: join persisted both, and `run` reading
+	# them back is exactly what this exercises.
 	ip netns exec "wgl$i" "$BIN" run --state-dir "$TMP/$i" \
-		--hosts-file "$TMP/$i/hosts" --lan-ip "$LAN.$i" >>"$TMP/$i/log" 2>&1 &
+		--hosts-file "$TMP/$i/hosts" >>"$TMP/$i/log" 2>&1 &
 	sleep 1
 }
 
