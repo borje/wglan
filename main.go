@@ -231,8 +231,7 @@ func main() {
 		}
 		die(n.forget(args[0]))
 	case "leave":
-		n.announceLeave()
-		die(n.sys.RemoveLink())
+		die(n.cmdLeave())
 	case "probe":
 		if len(args) > 1 {
 			die(errors.New("usage: wglan probe [PUBKEY|HOSTNAME]"))

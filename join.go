@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -285,6 +286,28 @@ func (n *Node) announceLeave() {
 		}
 		log.Printf("leave -> %s (%s): sent", p.MeshControlAddr(), short(p.Pubkey))
 	}
+}
+
+// cmdLeave is the whole of `wglan leave`: announce, tear the interface down,
+// clear our hosts block, and remove peers.json. The removal is what makes the
+// leave symmetric on this side: peers.json is the systemd unit's
+// ConditionPathExists, so leaving it behind resurrected the departed node —
+// interface, peer list, hosts block and all — on the next boot, half-rejoined
+// to a mesh that had just forgotten it. The secret and keypair stay, so a
+// rejoin is one command.
+func (n *Node) cmdLeave() error {
+	n.announceLeave()
+	if err := n.sys.RemoveLink(); err != nil {
+		return err
+	}
+	if err := n.sys.WriteHosts(nil); err != nil {
+		return err
+	}
+	if err := os.Remove(statePath(n.dir)); err != nil {
+		return err
+	}
+	log.Printf("left the mesh: %s removed; stop any running `wglan run` yourself", statePath(n.dir))
+	return nil
 }
 
 // ---------------------------------------------------------------- server

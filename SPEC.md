@@ -281,6 +281,12 @@ because a *different* peer left cleanly. Deletion happens strictly after the fan
 interleaved with it — `LEAVE` is bound to the tunnel (§6.1), so tearing the interface down mid-loop
 would break every send after the first, silencing exactly the peers still waiting to hear.
 
+**Then it removes `peers.json` and clears the hosts block.** `peers.json` is the systemd unit's
+`ConditionPathExists`; leaving it behind resurrects the departed node on the next boot — interface,
+peer list, hosts entries and all — half-rejoined to a mesh whose members just forgot it. The secret
+and keypair stay, so rejoining is one command. Stopping a running `wglan run` remains the
+operator's act (wglan does not manage services), and `leave` says so.
+
 ### 6.1 Required constraint
 
 **A `LEAVE` is honoured only when it arrives inside the tunnel, from the mesh address owned by the

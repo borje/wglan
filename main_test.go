@@ -467,6 +467,41 @@ func TestMergeRollsBackOnSetPeerFailure(t *testing.T) {
 	}
 }
 
+// `wglan leave` must remove peers.json: it is what a systemd unit's
+// ConditionPathExists checks, so leaving it behind resurrects the departed
+// node — interface, peer list, hosts block and all — on the next boot.
+func TestLeaveRemovesStateAndHostsBlock(t *testing.T) {
+	t.Parallel()
+	key := mustKey(t)
+	n, f := testNode(t, key, 1)
+	peer := envelope.Peer{Pubkey: pubN(t, 2), Hostname: "node2", MeshIP: "127.0.0.2", LANEndpoint: "127.0.0.2:51820", ControlPort: 51821}
+	if a, _, _ := n.apply([]envelope.Peer{peer}); a != 1 {
+		t.Fatal("setup: peer not applied")
+	}
+	if _, ok, _ := loadState(n.dir); !ok {
+		t.Fatal("setup: no peers.json")
+	}
+
+	if err := n.cmdLeave(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := loadState(n.dir); ok {
+		t.Error("peers.json survived leave — systemd would resurrect this node on the next boot")
+	}
+	if b, err := os.ReadFile(n.sys.HostsPath); err == nil && strings.Contains(string(b), ".mesh") {
+		t.Errorf("hosts entries survived leave:\n%s", b)
+	}
+	if got := f.find("ip", "link", "delete", "dev", "wglan0"); len(got) != 1 {
+		t.Error("interface was not removed")
+	}
+	// The secret and keypair stay: rejoining is meant to be one command.
+	for _, keep := range []string{"private.key"} {
+		if _, err := os.Stat(filepath.Join(n.dir, keep)); err != nil {
+			t.Errorf("%s did not survive leave: %v", keep, err)
+		}
+	}
+}
+
 // ---------------------------------------------------------------- protocol
 
 func TestThreeNodeConvergence(t *testing.T) {
