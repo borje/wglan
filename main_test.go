@@ -536,6 +536,30 @@ func TestLeaveRemovesStateEvenWhenTeardownFails(t *testing.T) {
 	}
 }
 
+// forget applies to WireGuard before it touches state, like mergeLocked: a
+// failing `wg set ... remove` must not leave the peer gone from memory while
+// peers.json and WireGuard both still have it.
+func TestForgetKeepsStateWhenWgFails(t *testing.T) {
+	t.Parallel()
+	key := mustKey(t)
+	n, f := testNode(t, key, 1)
+	peer := envelope.Peer{Pubkey: pubN(t, 2), Hostname: "node2", MeshIP: "127.0.0.2", LANEndpoint: "127.0.0.2:51820", ControlPort: 51821}
+	if a, _, _ := n.apply([]envelope.Peer{peer}); a != 1 {
+		t.Fatal("setup: peer not applied")
+	}
+	f.fail["wg set wglan0 peer "+peer.Pubkey+" remove"] = true
+
+	if err := n.forget(peer.Pubkey); err == nil {
+		t.Fatal("forget reported success though wg set failed")
+	}
+	if n.st.byPubkey(peer.Pubkey) < 0 {
+		t.Error("peer dropped from memory though WireGuard and peers.json still have it")
+	}
+	if st, _, _ := loadState(n.dir); st.byPubkey(peer.Pubkey) < 0 {
+		t.Error("peers.json lost the peer")
+	}
+}
+
 // An off-tunnel JOIN whose observed source is not an IPv4 LAN address is
 // rejected outright. Storing net.JoinHostPort(v6, port) would persist an
 // endpoint every receiver's validation rejects, poisoning each JOIN_REPLY this

@@ -167,10 +167,13 @@ func (n *Node) forget(pubkey string) error {
 		return fmt.Errorf("no peer with pubkey %s", pubkey)
 	}
 	p := n.st.Peers[i]
-	n.st.Peers = slices.Delete(n.st.Peers, i, i+1)
+	// WireGuard first, state second, as in mergeLocked: a failing `wg set ...
+	// remove` must not leave the peer gone from memory while peers.json and
+	// WireGuard both still have it.
 	if err := n.sys.RemovePeer(pubkey); err != nil {
 		return err
 	}
+	n.st.Peers = slices.Delete(n.st.Peers, i, i+1)
 	if err := n.persistLocked(); err != nil {
 		return err
 	}
