@@ -523,9 +523,11 @@ func (n *Node) cmdRun() error {
 
 // serve listens on every interface: a JOIN must be reachable before a tunnel
 // exists. LEAVE and PROBE are bound to the tunnel inside the handler instead.
+// IPv4-only, like everything else on the wire (SPEC §4.3): a dual-stack
+// listener would observe IPv6 sources, whose endpoints no receiver accepts.
 func (n *Node) serve() error {
 	addr := fmt.Sprintf(":%d", n.st.Self.ControlPort)
-	ln, err := net.Listen("tcp", addr)
+	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}

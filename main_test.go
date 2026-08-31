@@ -502,6 +502,33 @@ func TestLeaveRemovesStateAndHostsBlock(t *testing.T) {
 	}
 }
 
+// An off-tunnel JOIN whose observed source is not an IPv4 LAN address is
+// rejected outright. Storing net.JoinHostPort(v6, port) would persist an
+// endpoint every receiver's validation rejects, poisoning each JOIN_REPLY this
+// node later sends (envelope: one bad entry rejects the whole message).
+func TestJoinFromIPv6SourceRejected(t *testing.T) {
+	key := mustKey(t)
+	n1, _ := testNode(t, key, 1)
+	ln, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skip("no IPv6 loopback:", err)
+	}
+	defer ln.Close()
+	n1.st.Self.ControlPort = ln.Addr().(*net.TCPAddr).Port
+	go n1.Serve(ln)
+
+	n2, _ := testNode(t, key, 2)
+	n2.st.Self.ControlPort = 51821
+	_ = n2.joinTo(ln.Addr().String()) // no reply expected: the JOIN is rejected
+
+	time.Sleep(100 * time.Millisecond)
+	n1.mu.Lock()
+	defer n1.mu.Unlock()
+	if i := n1.st.byPubkey(n2.st.Self.Pubkey); i >= 0 {
+		t.Fatalf("JOIN over IPv6 was applied, endpoint %q", n1.st.Peers[i].LANEndpoint)
+	}
+}
+
 // ---------------------------------------------------------------- protocol
 
 func TestThreeNodeConvergence(t *testing.T) {

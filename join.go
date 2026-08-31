@@ -413,6 +413,17 @@ func (n *Node) handleJoin(conn net.Conn, p envelope.Payload, from string) {
 	// off-tunnel, the source address of the connection is the endpoint, and only
 	// the claimed port is kept. Second-hand entries in peers[] stay claimed.
 	if !n.inTunnel(conn) {
+		// The observed source must be IPv4 — the only address family anything in
+		// this mesh accepts. serve() listens IPv4-only, but this handler must not
+		// depend on that: a JOIN observed at a v6 source would store a "[v6]:port"
+		// endpoint, and every receiver of a later JOIN_REPLY carrying it rejects
+		// the whole message ("one bad entry rejects the message").
+		src, err := netip.ParseAddr(from)
+		if err != nil || !src.Unmap().Is4() {
+			log.Printf("rejected JOIN from %s (%s): source is not an IPv4 LAN address", from, short(sender.Pubkey))
+			return
+		}
+		from = src.Unmap().String()
 		if _, port, err := net.SplitHostPort(sender.LANEndpoint); err == nil {
 			if fixed := net.JoinHostPort(from, port); fixed != sender.LANEndpoint {
 				log.Printf("peer %s claimed endpoint %s, observed %s — using observed",
