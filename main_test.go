@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -1039,6 +1040,49 @@ func TestCommandFlagsAreScoped(t *testing.T) {
 		})
 	}
 }
+
+// A transient Accept error — EMFILE under fd pressure, one aborted connection —
+// must not kill the daemon: Serve returning makes cmdRun die(), taking the node
+// off the mesh for everyone until an operator restarts it. Serve retries with
+// backoff and returns only on a non-temporary listener failure.
+func TestServeSurvivesTemporaryAcceptErrors(t *testing.T) {
+	t.Parallel()
+	key := mustKey(t)
+	n, _ := testNode(t, key, 1)
+	ln := &flakyListener{failures: 3}
+	err := n.Serve(ln)
+	if !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("Serve returned %v, want net.ErrClosed after outlasting the temporary errors", err)
+	}
+	if ln.accepts != 4 {
+		t.Fatalf("Serve saw %d Accepts, want 4 — it gave up on a temporary error", ln.accepts)
+	}
+}
+
+// tempErr mimics what Accept returns under fd exhaustion: a net.Error that is
+// temporary but not a timeout.
+type tempErr struct{}
+
+func (tempErr) Error() string   { return "accept: too many open files" }
+func (tempErr) Timeout() bool   { return false }
+func (tempErr) Temporary() bool { return true }
+
+// flakyListener fails its first `failures` Accepts with a temporary error,
+// then reports the listener closed.
+type flakyListener struct {
+	failures int
+	accepts  int
+}
+
+func (l *flakyListener) Accept() (net.Conn, error) {
+	l.accepts++
+	if l.accepts <= l.failures {
+		return nil, tempErr{}
+	}
+	return nil, net.ErrClosed
+}
+func (l *flakyListener) Close() error   { return nil }
+func (l *flakyListener) Addr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)} }
 
 // ---------------------------------------------------------------- helpers
 

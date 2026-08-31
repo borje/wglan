@@ -352,11 +352,29 @@ func (l *limiter) allow(ip string, now time.Time) bool {
 func (n *Node) Serve(ln net.Listener) error {
 	sem := make(chan struct{}, maxInflight)
 	lim := newLimiter()
+	var pause time.Duration // grows across consecutive temporary Accept errors
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			// EMFILE/ENFILE and aborted connections are temporary. Returning on
+			// them turns a moment of fd pressure into a dead daemon — cmdRun
+			// exits, and the node serves nobody until an operator restarts it.
+			// Same backoff net/http's Server uses; Temporary is deprecated for
+			// having too many meanings, but for Accept it means exactly this.
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Temporary() { //nolint:staticcheck
+				if pause == 0 {
+					pause = 5 * time.Millisecond
+				} else if pause *= 2; pause > time.Second {
+					pause = time.Second
+				}
+				log.Printf("accept: %v — retrying in %v", err, pause)
+				time.Sleep(pause)
+				continue
+			}
 			return err
 		}
+		pause = 0
 		ip := hostOf(conn.RemoteAddr())
 		if !lim.allow(ip, time.Now()) {
 			log.Printf("rejected %s: rate limit", ip)
