@@ -387,7 +387,7 @@ wglan sync    IP:PORT                         re-announce to one member and re-a
 wglan forget  PUBKEY                          local removal of one peer
 wglan leave                                   announce departure to every peer, then remove the interface
 wglan probe   [PUBKEY|HOSTNAME]                mesh-wide reachability tally (every peer if omitted)
-wglan firewall                                print the nftables skeleton for this node
+wglan firewall                                print the nftables skeleton for this node (after join)
 ```
 
 Also on every subcommand: `--state-dir` (default `/var/lib/wglan`), so the whole binary is testable
@@ -579,9 +579,14 @@ with no code involved; a monitoring agent or a stray debug listener is exposed i
 deliberateness at all.
 
 **wglan ships the ruleset and never applies it.** `wglan firewall` prints `nftables/wglan.conf` with
-its two `define` lines set from `--interface` and `--control-port`:
+its two `define` lines filled in from the interface and control port join persisted, and takes no
+flags of its own. **It requires a completed join and errors out without one.** The rules are scoped
+to one interface and one port; scoped to the wrong one they match no traffic, which is a default-deny
+that denies nothing on a node already reachable. Guessing there would fail open, so the only way to
+get a ruleset is to ask the node that knows:
 
 ```
+wglan join --secret wglan://v1/... --mesh-ip 10.90.0.2/24 --bootstrap 192.168.1.21:51821
 wglan firewall > /etc/nftables.d/wglan.conf
 nft -c -f /etc/nftables.d/wglan.conf     # check before committing to it
 nft -f    /etc/nftables.d/wglan.conf

@@ -33,6 +33,8 @@ var firewallConf string
 // printing a ruleset that ignores the flags.
 const defaultIface = "wglan0"
 
+const defaultStateDir = "/var/lib/wglan"
+
 const (
 	defaultIfaceLine = `define WGLAN_IFACE = "wglan0"`
 	defaultPortLine  = `define WGLAN_CONTROL_PORT = 51821`
@@ -62,7 +64,7 @@ const usage = `wglan — a minimal WireGuard mesh for a LAN with no internet acc
   wglan forget  PUBKEY                  local removal of one peer
   wglan leave                           announce departure to every peer, then remove the interface
   wglan probe   [PUBKEY|HOSTNAME]       mesh-wide reachability tally (every peer if omitted)
-  wglan firewall                        print the nftables skeleton for this node
+  wglan firewall                        print the nftables skeleton for this node (after join)
 
 "join" sets this node up and returns; "run" is the long-lived process, and is
 what a systemd unit should start. Re-running "join" against an already-joined
@@ -76,8 +78,10 @@ flags it actually uses, so this list never grows a flag it doesn't act on.
 so a reboot needs no operator present.
 
 wglan never edits nftables. "wglan firewall" prints a ruleset that default-denies
-the mesh interface; install it where your nftables config is loaded from. Until
-you do, joining exposes every port this host already has bound.
+the mesh interface; install it where your nftables config is loaded from. It needs
+a completed join to know which interface and port to guard, so it runs after
+"join" — and until it is installed, joining exposes every port this host already
+has bound.
 `
 
 type opts struct {
@@ -108,7 +112,7 @@ var (
 		fs.StringVar(&o.iface, "interface", "", "WireGuard interface name (default: the one join used, else "+defaultIface+")")
 	}}
 	flagStateDir = flagReg{"state-dir", func(fs *flag.FlagSet, o *opts) {
-		fs.StringVar(&o.dir, "state-dir", "/var/lib/wglan", "where peers.json, private.key and secret live")
+		fs.StringVar(&o.dir, "state-dir", defaultStateDir, "where peers.json, private.key and secret live")
 	}}
 	// --lan-ip only matters on join/run/sync: they can send n.self() over the
 	// wire (a JOIN or JOIN_REPLY), which is what advertises our LAN endpoint to
@@ -180,12 +184,11 @@ func main() {
 	if cmd == "firewall" {
 		fs := flag.NewFlagSet("wglan firewall", flag.ExitOnError)
 		fs.Usage = func() { fmt.Fprint(os.Stderr, usage); fs.PrintDefaults() }
-		iface := fs.String("interface", "wglan0", "WireGuard interface name")
-		port := fs.Int("control-port", 51821, "TCP control-plane port")
+		dir := fs.String("state-dir", defaultStateDir, "where peers.json, private.key and secret live")
 		if err := fs.Parse(os.Args[2:]); err != nil {
 			die(err)
 		}
-		out, err := renderFirewall(*iface, *port)
+		out, err := firewallFor(*dir)
 		die(err)
 		fmt.Print(out)
 		return
@@ -424,6 +427,23 @@ func lanCandidates(exclude string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// firewallFor renders the ruleset for an already-joined node, and refuses to
+// render one otherwise. The rules are scoped to a single interface and control
+// port, and a ruleset scoped to the wrong one matches no traffic — a
+// default-deny that denies nothing, on a node that is already reachable. Rather
+// than guess and fail open, require the join that settles both, so there is one
+// way to get a correct ruleset and no flags here to disagree with it.
+func firewallFor(dir string) (string, error) {
+	st, found, err := loadState(dir)
+	if err != nil {
+		return "", err
+	}
+	if !found || st.Self.Iface == "" || st.Self.ControlPort == 0 {
+		return "", fmt.Errorf(`%s: no completed join to scope a ruleset to; run "wglan join" first`, statePath(dir))
+	}
+	return renderFirewall(st.Self.Iface, st.Self.ControlPort)
 }
 
 // resolvePort settles a port: flag > persisted > default, like every other

@@ -104,6 +104,52 @@ func TestRenderFirewallSubstitutes(t *testing.T) {
 	}
 }
 
+// The ruleset must guard the interface and control port this node actually
+// joined with, so `firewall` reads them from state rather than guessing: a
+// default-scoped ruleset on a node joined with --interface wg7 matches nothing
+// and fails open. Hence no pre-join ruleset at all, and no flags to disagree
+// with what join settled.
+func TestFirewallRequiresJoin(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name    string
+		self    *Self // nil: no peers.json at all
+		wantErr bool
+	}{
+		{"before join there is nothing to scope a ruleset to", nil, true},
+		{"state without an interface is not a completed join", &Self{ControlPort: 51900}, true},
+		{"state without a control port is not a completed join", &Self{Iface: "wg7"}, true},
+		{"joined", &Self{Iface: "wg7", ControlPort: 51900}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			if tt.self != nil {
+				if err := saveState(dir, State{Self: *tt.self}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out, err := firewallFor(dir)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("want an error, got a ruleset:\n%s", out)
+				}
+				if !strings.Contains(err.Error(), "join") {
+					t.Errorf("error does not say to join first: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, `define WGLAN_IFACE = "wg7"`) ||
+				!strings.Contains(out, "define WGLAN_CONTROL_PORT = 51900") {
+				t.Error("ruleset not scoped to what join persisted")
+			}
+		})
+	}
+}
+
 // nft parses what we ship. Needs root: `nft -c` still initialises a netlink
 // cache, so it is skipped in an unprivileged run and covered by CI or a manual
 // `sudo go test -run Nft`.

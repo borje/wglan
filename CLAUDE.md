@@ -33,8 +33,12 @@ sudo testdata/mesh.sh        # three-node end-to-end in network namespaces; need
 `firewall_test.go` guards the embedded `nftables/wglan.conf` ruleset; run as root to also exercise
 `nft -c -f` against it.
 
-`wglan firewall | diff - nftables/wglan.conf` must be empty — the CLI prints the same file it
-embeds, with only `--interface`/`--control-port` substituted (see `renderFirewall` in main.go).
+`wglan firewall` requires a completed join: it takes only `--state-dir`, and reads the interface and
+control port out of `peers.json` (`firewallFor` in main.go). A ruleset scoped to the wrong interface
+matches nothing and fails open, so there is no pre-join ruleset and no flags to disagree with what
+join settled — don't re-add either. On a node joined with the defaults its output is byte-identical
+to `nftables/wglan.conf`; `renderFirewall` substitutes only the two `define` lines, which
+`TestRenderFirewallSubstitutes` pins.
 
 ## Architecture
 

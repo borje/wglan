@@ -66,8 +66,9 @@ firewall is not part of bring-up: `wglan firewall` prints a ruleset and the oper
 brings up `wglan0` holding the address **and returns**; `wg show wglan0` lists it with no peers;
 `wglan run` then serves and can be killed and restarted — it comes back from `peers.json` without
 touching the network. Second run must be silent about
-everything already correct. Separately: `wglan firewall | diff - nftables/wglan.conf` is empty, and
-`sudo nft -c -f <(wglan firewall)` passes.
+everything already correct. Separately, on that default-interface node: `wglan firewall | diff -
+nftables/wglan.conf` is empty, and `sudo nft -c -f <(wglan firewall)` passes. Before the join
+`wglan firewall` must error, not print (SPEC §12.5).
 
 ### 3 · Two-node join
 

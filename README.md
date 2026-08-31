@@ -12,10 +12,11 @@ completes, **nothing runs on a timer.**
 
 ```
 wglan secret                                                   # on any host
-wglan firewall > /etc/nftables.d/wglan.conf && nft -f $_       # once per host
 wglan join --secret wglan://v1/... --mesh-ip 10.90.0.1/24      # first node
 wglan join --secret wglan://v1/... --mesh-ip 10.90.0.2/24 \
            --bootstrap 192.168.1.21:51821                       # every node after
+wglan firewall > /etc/nftables.d/wglan.conf                    # after the join, per host
+nft -f /etc/nftables.d/wglan.conf
 install -m755 wglan /usr/bin/wglan                              # once, per host
 install -m644 systemd/wglan.service /etc/systemd/system/        # once, per host
 systemctl enable --now wglan                                    # `wglan run`
@@ -61,7 +62,7 @@ re-added by accident. See [SPEC.md §2](SPEC.md) and §8.
 | **[IMPLEMENTATION.md](IMPLEMENTATION.md)** | File layout, six milestones with the acceptance check for each, test strategy, and the deferral list with its triggers. |
 | **[docs/field-guide.html](docs/field-guide.html)** | The argument, with sequence diagrams — join, restart, data plane, false-eviction cascade, bootc readiness ordering. For evaluating the design rather than building it. |
 | **[docs/feature-matrix.html](docs/feature-matrix.html)** | wglan against the tools people shop for "WireGuard mesh," plus an internal shipped/deferred inventory. For positioning, not for building it. |
-| **[nftables/wglan.conf](nftables/wglan.conf)** | The shipped firewall skeleton, commented. `wglan firewall` prints this with your `--interface` and `--control-port` filled in. |
+| **[nftables/wglan.conf](nftables/wglan.conf)** | The shipped firewall skeleton, commented. `wglan firewall` prints this with the interface and control port this node joined with filled in. |
 | **[SPEC.md §17](SPEC.md)** | The ten things spec draft 1 got wrong, and what replaced each. Read this before assuming the code diverges from the spec. |
 
 ## Status
