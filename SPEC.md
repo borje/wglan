@@ -287,6 +287,12 @@ peer list, hosts entries and all — half-rejoined to a mesh whose members just 
 and keypair stay, so rejoining is one command. Stopping a running `wglan run` remains the
 operator's act (wglan does not manage services), and `leave` says so.
 
+**Every teardown step runs; the failures are reported together.** Stopping at the first one stops
+before the state removal, and by then the fan-out has already gone out — so a node whose interface
+is already gone (a reboot with the unit disabled) announced its departure, failed to delete a device
+that was not there, kept `peers.json`, and came back on the next boot, with every retry failing
+identically.
+
 ### 6.1 Required constraint
 
 **A `LEAVE` is honoured only when it arrives inside the tunnel, from the mesh address owned by the

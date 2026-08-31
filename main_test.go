@@ -502,6 +502,40 @@ func TestLeaveRemovesStateAndHostsBlock(t *testing.T) {
 	}
 }
 
+// A leave that cannot delete the interface must still remove peers.json. The
+// announce has already gone out by then, so every peer has forgotten this node;
+// stopping short leaves peers.json — the systemd unit's ConditionPathExists —
+// and the node comes back half-rejoined on the next boot, with `wglan leave`
+// failing the same way every time and no recovery short of rm by hand. A host
+// that rebooted without `wglan run` enabled is exactly this case: the announce
+// works, `ip link delete` does not.
+func TestLeaveRemovesStateEvenWhenTeardownFails(t *testing.T) {
+	t.Parallel()
+	for _, step := range []string{"ip link delete", "ip "} {
+		t.Run(step, func(t *testing.T) {
+			t.Parallel()
+			key := mustKey(t)
+			n, f := testNode(t, key, 1)
+			peer := envelope.Peer{Pubkey: pubN(t, 2), Hostname: "node2", MeshIP: "127.0.0.2", LANEndpoint: "127.0.0.2:51820", ControlPort: 51821}
+			if a, _, _ := n.apply([]envelope.Peer{peer}); a != 1 {
+				t.Fatal("setup: peer not applied")
+			}
+			if _, ok, _ := loadState(n.dir); !ok {
+				t.Fatal("setup: no peers.json")
+			}
+			f.fail[step] = true
+
+			err := n.cmdLeave()
+			if err == nil {
+				t.Error("the failure was swallowed; the operator needs to hear it")
+			}
+			if _, ok, _ := loadState(n.dir); ok {
+				t.Error("peers.json survived a failed teardown — this node resurrects on the next boot")
+			}
+		})
+	}
+}
+
 // An off-tunnel JOIN whose observed source is not an IPv4 LAN address is
 // rejected outright. Storing net.JoinHostPort(v6, port) would persist an
 // endpoint every receiver's validation rejects, poisoning each JOIN_REPLY this

@@ -295,16 +295,22 @@ func (n *Node) announceLeave() {
 // interface, peer list, hosts block and all — on the next boot, half-rejoined
 // to a mesh that had just forgotten it. The secret and keypair stay, so a
 // rejoin is one command.
+//
+// Every step runs, and the errors are reported together at the end. Returning
+// on the first one stopped short of the removal — and the announce has already
+// gone out by then, so every peer has forgotten this node while it still has
+// the state that brings it back. A host that rebooted without `wglan run`
+// enabled is exactly that case: the announce works, `ip link delete` does not,
+// and each retry of `wglan leave` failed identically with no recovery short of
+// rm by hand.
 func (n *Node) cmdLeave() error {
 	n.announceLeave()
-	if err := n.sys.RemoveLink(); err != nil {
-		return err
+	errs := []error{n.sys.RemoveLink(), n.sys.WriteHosts(nil)}
+	if err := os.Remove(statePath(n.dir)); err != nil && !os.IsNotExist(err) {
+		errs = append(errs, err)
 	}
-	if err := n.sys.WriteHosts(nil); err != nil {
-		return err
-	}
-	if err := os.Remove(statePath(n.dir)); err != nil {
-		return err
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("left the mesh, but the teardown was incomplete: %w", err)
 	}
 	log.Printf("left the mesh: %s removed; stop any running `wglan run` yourself", statePath(n.dir))
 	return nil
