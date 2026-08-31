@@ -171,7 +171,7 @@ Every field is inside the ciphertext, so all of it is confidential *and* tamper-
 | `protocol` | string | `"wglan-v1"`. Checked first; fails closed on version skew before any other field is read. |
 | `type` | string | `JOIN`, `JOIN_REPLY`, or `LEAVE`. |
 | `timestamp` | int64 | Unix seconds. Freshness bound, §4.4. Inside the seal, so unforgeable. |
-| `pubkey` | string | Sender's WireGuard public key: exactly 44 base64 chars decoding to 32 bytes. |
+| `pubkey` | string | Sender's WireGuard public key: exactly 44 base64 chars decoding to 32 bytes, **strict** (unused trailing bits zero), so exactly one string encodes each key. Lenient decoding admits variants of a known key that pass every string-keyed check — dedup, the collision checks, the CHANGED log — as a "new" peer, while `wg set` canonicalises them onto the known key. |
 | `hostname` | string | `^[a-z0-9-]{1,63}$`. |
 | `mesh_ip` | string | Sender's mesh address, no mask (the mask is local-only state). Must parse via `netip.ParseAddr`, be IPv4 unicast, and fall inside the receiver's configured subnet. |
 | `lan_endpoint` | string | Sender's `ip:port` for the WireGuard data plane. Must parse via `net.SplitHostPort` + address parse — not a regex. |

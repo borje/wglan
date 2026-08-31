@@ -376,7 +376,12 @@ func validPeer(p Peer) error {
 }
 
 func validPubkey(s string) error {
-	b, err := base64.StdEncoding.DecodeString(s)
+	// Strict: the unused trailing bits must be zero, so exactly one string
+	// encodes each key. Lenient decoding admits variants that decode to the same
+	// 32 bytes, and everything downstream (dedup, the collision checks, the
+	// CHANGED log) compares pubkeys as strings while `wg set` compares bytes —
+	// a variant would pass a known key off as a new peer.
+	b, err := base64.StdEncoding.Strict().DecodeString(s)
 	if len(s) != 44 || err != nil || len(b) != 32 {
 		return fmt.Errorf("%w: pubkey %q", ErrField, s)
 	}

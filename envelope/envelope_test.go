@@ -272,6 +272,30 @@ func TestFullPeerListFits(t *testing.T) {
 	}
 }
 
+// A pubkey must be the canonical encoding of its 32 bytes. Lenient base64
+// ignores the unused trailing bits, so distinct 44-char strings decode to the
+// same WireGuard key — and everything downstream compares pubkeys as strings
+// (dedup, the collision checks, the CHANGED log), while `wg set` canonicalises
+// to bytes. A non-canonical variant would slip a known key past every
+// string-keyed check as a "new" peer.
+func TestPubkeyMustBeCanonicalBase64(t *testing.T) {
+	t.Parallel()
+	// goodPub ends "…8Dc=": 'c' (011100) has its two low bits unused, so 'd'
+	// (011101) decodes to the identical 32 bytes under lenient decoding.
+	variant := strings.TrimSuffix(goodPub, "c=") + "d="
+	a, _ := base64.StdEncoding.DecodeString(goodPub)
+	b, err := base64.StdEncoding.DecodeString(variant)
+	if err != nil || !bytes.Equal(a, b) {
+		t.Fatal("premise broken: the variant no longer decodes to the same key")
+	}
+	if err := ValidPubkey(goodPub); err != nil {
+		t.Errorf("canonical pubkey rejected: %v", err)
+	}
+	if err := ValidPubkey(variant); err == nil {
+		t.Error("non-canonical encoding of the same key accepted")
+	}
+}
+
 func TestFieldValidation(t *testing.T) {
 	t.Parallel()
 	mut := func(f func(*Payload)) Payload {
