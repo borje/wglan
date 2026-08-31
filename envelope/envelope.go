@@ -388,9 +388,20 @@ func validPubkey(s string) error {
 	return nil
 }
 
+// broadcast is the IPv4 limited-broadcast address, never a host.
+var broadcast = netip.AddrFrom4([4]byte{255, 255, 255, 255})
+
+// validMeshIP admits IPv4 unicast a host could actually hold. Link-local and
+// broadcast are refused: validEndpoint reuses this for lan_endpoint hosts, and
+// a second-hand peers[] endpoint goes straight to `wg set ... endpoint` with
+// nothing to observe it against. Loopback is deliberately NOT refused: the
+// receiver's subnet check covers mesh_ip, and the root-free test strategy runs
+// whole meshes on 127.0.0.0/8 (CLAUDE.md); a loopback *endpoint* from a
+// malicious member stays inside SPEC §13's accepted second-hand residual.
 func validMeshIP(s string) error {
 	a, err := netip.ParseAddr(s)
-	if err != nil || !a.Is4() || !a.IsValid() || a.IsUnspecified() || a.IsMulticast() {
+	if err != nil || !a.Is4() || !a.IsValid() || a.IsUnspecified() || a.IsMulticast() ||
+		a.IsLinkLocalUnicast() || a == broadcast {
 		return fmt.Errorf("%w: mesh_ip %q", ErrField, s)
 	}
 	return nil

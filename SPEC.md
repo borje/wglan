@@ -173,8 +173,8 @@ Every field is inside the ciphertext, so all of it is confidential *and* tamper-
 | `timestamp` | int64 | Unix seconds. Freshness bound, §4.4. Inside the seal, so unforgeable. |
 | `pubkey` | string | Sender's WireGuard public key: exactly 44 base64 chars decoding to 32 bytes, **strict** (unused trailing bits zero), so exactly one string encodes each key. Lenient decoding admits variants of a known key that pass every string-keyed check — dedup, the collision checks, the CHANGED log — as a "new" peer, while `wg set` canonicalises them onto the known key. |
 | `hostname` | string | `^[a-z0-9-]{1,63}$`. |
-| `mesh_ip` | string | Sender's mesh address, no mask (the mask is local-only state). Must parse via `netip.ParseAddr`, be IPv4 unicast, and fall inside the receiver's configured subnet. |
-| `lan_endpoint` | string | Sender's `ip:port` for the WireGuard data plane. Must parse via `net.SplitHostPort` + address parse — not a regex. |
+| `mesh_ip` | string | Sender's mesh address, no mask (the mask is local-only state). Must parse via `netip.ParseAddr` and be IPv4 unicast a host could hold — unspecified, multicast, link-local and broadcast are refused — and fall inside the receiver's configured subnet. |
+| `lan_endpoint` | string | Sender's `ip:port` for the WireGuard data plane. Must parse via `net.SplitHostPort` + address parse — not a regex — with the host held to the same address rules as `mesh_ip`, since a second-hand entry reaches `wg set ... endpoint` with nothing to observe it against. Loopback is deliberately admitted: the subnet check covers `mesh_ip`, and a loopback endpoint from a member is inside §13's accepted second-hand residual. |
 | `control_port` | int | 1–65535. Sender's TCP control port. |
 | `peers` | array | `JOIN_REPLY` only. `{pubkey, hostname, mesh_ip, lan_endpoint, control_port}` per known member. **Capped at 256 entries, each validated by the identical rules above.** |
 | `target` | string | `PROBE` only. Pubkey of the peer being asked about. |

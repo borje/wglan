@@ -333,6 +333,17 @@ func TestFieldValidation(t *testing.T) {
 		{"mesh ip v6", mut(func(p *Payload) { p.MeshIP = "fd00::1" }), false},
 		{"mesh ip unspecified", mut(func(p *Payload) { p.MeshIP = "0.0.0.0" }), false},
 		{"mesh ip multicast", mut(func(p *Payload) { p.MeshIP = "224.0.0.1" }), false},
+		{"mesh ip link-local", mut(func(p *Payload) { p.MeshIP = "169.254.7.7" }), false},
+		{"mesh ip broadcast", mut(func(p *Payload) { p.MeshIP = "255.255.255.255" }), false},
+
+		// A second-hand peers[] endpoint goes straight to `wg set ... endpoint`
+		// with nothing to observe it against, so addresses that can never be a
+		// LAN endpoint are refused here. Loopback stays valid: the subnet check
+		// covers mesh_ip, and the root-free test strategy runs whole meshes on
+		// 127.0.0.0/8 (see CLAUDE.md); a loopback *endpoint* remains inside the
+		// accepted second-hand-poisoning residual of SPEC §13.
+		{"endpoint link-local host", mut(func(p *Payload) { p.LANEndpoint = "169.254.7.7:51820" }), false},
+		{"endpoint broadcast host", mut(func(p *Payload) { p.LANEndpoint = "255.255.255.255:51820" }), false},
 
 		{"endpoint no port", mut(func(p *Payload) { p.LANEndpoint = "192.168.1.23" }), false},
 		{"endpoint hostname", mut(func(p *Payload) { p.LANEndpoint = "node3.example:51820" }), false},
