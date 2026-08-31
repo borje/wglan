@@ -529,6 +529,72 @@ func TestJoinFromIPv6SourceRejected(t *testing.T) {
 	}
 }
 
+// Ports follow the same flag > persisted > default precedence as every other
+// identity field (SPEC §10). Draft 1 reset both to the flag defaults on every
+// join, so the bare re-run the usage text calls safe silently moved a
+// custom-port node back to 51820/51821 and partitioned it.
+func TestResolvePort(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name              string
+		flag, stored, def int
+		want              int
+	}{
+		{"flag beats stored", 60000, 55555, 51821, 60000},
+		{"stored beats the default", 0, 55555, 51821, 55555},
+		{"default when neither", 0, 0, 51821, 51821},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := resolvePort(tc.flag, tc.stored, tc.def); got != tc.want {
+				t.Errorf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestJoinKeepsPersistedPorts(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if _, err := GenKey(keyPath(dir)); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := envelope.NewSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "secret"), []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st := State{Self: Self{
+		Pubkey: "x", Hostname: "node1", MeshIP: "10.90.0.1/24",
+		ListenPort: 51899, ControlPort: 55555,
+		Iface: "wglan0", LANIP: "10.0.0.2",
+	}}
+	if err := saveState(dir, st); err != nil {
+		t.Fatal(err)
+	}
+
+	// The bare repair re-run: no port flags. Persisted ports must survive.
+	n, _, err := newNode("join", opts{dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.st.Self.ListenPort != 51899 || n.st.Self.ControlPort != 55555 {
+		t.Errorf("bare join reset ports to %d/%d, want the persisted 51899/55555",
+			n.st.Self.ListenPort, n.st.Self.ControlPort)
+	}
+
+	// A flag still wins, so ports remain changeable.
+	n, _, err = newNode("join", opts{dir: dir, controlPort: 51900})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.st.Self.ControlPort != 51900 {
+		t.Errorf("--control-port 51900 did not win over the persisted value: got %d", n.st.Self.ControlPort)
+	}
+}
+
 // ---------------------------------------------------------------- protocol
 
 func TestThreeNodeConvergence(t *testing.T) {

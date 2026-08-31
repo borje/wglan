@@ -132,11 +132,13 @@ var (
 	flagHostname = flagReg{"hostname", func(fs *flag.FlagSet, o *opts) {
 		fs.StringVar(&o.hostname, "hostname", "", "mesh hostname (default: the OS hostname)")
 	}}
+	// Zero defaults, like --interface: an unset flag is what lets the persisted
+	// value win over the fallback. See resolvePort.
 	flagListenPort = flagReg{"listen-port", func(fs *flag.FlagSet, o *opts) {
-		fs.IntVar(&o.listenPort, "listen-port", 51820, "WireGuard UDP data-plane port")
+		fs.IntVar(&o.listenPort, "listen-port", 0, "WireGuard UDP data-plane port (default: the one join used, else 51820)")
 	}}
 	flagControlPort = flagReg{"control-port", func(fs *flag.FlagSet, o *opts) {
-		fs.IntVar(&o.controlPort, "control-port", 51821, "TCP control-plane port")
+		fs.IntVar(&o.controlPort, "control-port", 0, "TCP control-plane port (default: the one join used, else 51821)")
 	}}
 )
 
@@ -296,7 +298,8 @@ func newNode(cmd string, o opts) (*Node, bool, error) {
 		if err := envelope.ValidHostname(st.Self.Hostname); err != nil {
 			return nil, false, err
 		}
-		st.Self.ListenPort, st.Self.ControlPort = o.listenPort, o.controlPort
+		st.Self.ListenPort = resolvePort(o.listenPort, st.Self.ListenPort, 51820)
+		st.Self.ControlPort = resolvePort(o.controlPort, st.Self.ControlPort, 51821)
 	}
 
 	key, err := resolveSecret(o, cmd == "join")
@@ -421,6 +424,21 @@ func lanCandidates(exclude string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// resolvePort settles a port: flag > persisted > default, like every other
+// identity field (SPEC §10). Assigning the flag unconditionally reset a
+// custom-port node to the defaults on the bare `wglan join` re-run the usage
+// text calls safe — persisted, advertised, and a silent partition.
+func resolvePort(flag, stored, def int) int {
+	switch {
+	case flag != 0:
+		return flag
+	case stored != 0:
+		return stored
+	default:
+		return def
+	}
 }
 
 // resolveIface settles the interface name: the flag wins, then what join
