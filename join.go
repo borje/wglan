@@ -162,6 +162,12 @@ func (n *Node) apply(peers []envelope.Peer) (int, int, []envelope.Peer) {
 func (n *Node) forget(pubkey string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	return n.forgetLocked(pubkey)
+}
+
+// forgetLocked removes one peer. Callers hold n.mu — handleLeave needs its
+// ownership check and the removal in one critical section (SPEC §14).
+func (n *Node) forgetLocked(pubkey string) error {
 	i := n.st.byPubkey(pubkey)
 	if i < 0 {
 		return fmt.Errorf("no peer with pubkey %s", pubkey)
@@ -498,23 +504,22 @@ func (n *Node) handleLeave(conn net.Conn, p envelope.Payload, from string) {
 		log.Printf("rejected LEAVE from %s (%s): did not arrive on %s", from, short(p.Pubkey), n.sys.Iface)
 		return
 	}
+	// Ownership check and removal in ONE critical section (SPEC §14). Split in
+	// two, a concurrent JOIN could renumber the entry between them, so the
+	// entry acted on would not be the one the check validated against `from`.
 	n.mu.Lock()
+	defer n.mu.Unlock()
 	i := n.st.byPubkey(p.Pubkey)
-	var owner string
-	if i >= 0 {
-		owner = n.st.Peers[i].MeshIP
-	}
-	n.mu.Unlock()
 	if i < 0 {
 		log.Printf("rejected LEAVE from %s: unknown pubkey %s", from, short(p.Pubkey))
 		return
 	}
-	if owner != from {
+	if owner := n.st.Peers[i].MeshIP; owner != from {
 		log.Printf("rejected LEAVE from %s naming %s: that pubkey owns %s", from, short(p.Pubkey), owner)
 		return
 	}
 	log.Printf("leave <- %s (%s): departing", from, short(p.Pubkey))
-	if err := n.forget(p.Pubkey); err != nil {
+	if err := n.forgetLocked(p.Pubkey); err != nil {
 		log.Printf("leave <- %s: %v", from, err)
 	}
 }
