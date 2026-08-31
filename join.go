@@ -91,18 +91,25 @@ func (n *Node) mergeLocked(p envelope.Peer) (outcome, error) {
 			short(p.Pubkey), p.Hostname, short(h.Pubkey))
 	}
 
+	// WireGuard first, state second — in both branches. The reverse order left a
+	// peer in the map when `wg set` failed, and that phantom was then advertised
+	// in the reply, persisted, and reloaded on every restart: exactly the
+	// state/WireGuard divergence SPEC §14 exists to rule out.
 	i := n.st.byPubkey(p.Pubkey)
 	if i < 0 {
-		n.st.Peers = append(n.st.Peers, p)
 		if err := n.sys.SetPeer(p); err != nil {
 			return unchanged, err
 		}
+		n.st.Peers = append(n.st.Peers, p)
 		log.Printf("peer %s added: %s %s.mesh via %s", short(p.Pubkey), p.MeshIP, p.Hostname, p.LANEndpoint)
 		return added, nil
 	}
 	old := n.st.Peers[i]
 	if old == p {
 		return unchanged, nil
+	}
+	if err := n.sys.SetPeer(p); err != nil {
+		return unchanged, err
 	}
 	// A change is logged differently from a first-sight add, naming old and new.
 	// This is the whole mitigation for a member forging another member's address
@@ -111,9 +118,6 @@ func (n *Node) mergeLocked(p envelope.Peer) (outcome, error) {
 	log.Printf("peer %s CHANGED: %s %s.mesh via %s -> %s %s.mesh via %s",
 		short(p.Pubkey), old.MeshIP, old.Hostname, old.LANEndpoint, p.MeshIP, p.Hostname, p.LANEndpoint)
 	n.st.Peers[i] = p
-	if err := n.sys.SetPeer(p); err != nil {
-		return unchanged, err
-	}
 	return changed, nil
 }
 

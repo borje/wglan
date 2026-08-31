@@ -416,6 +416,57 @@ func TestMergeRules(t *testing.T) {
 	}
 }
 
+// SPEC §14: state, WireGuard, and the reply snapshot may never diverge. A peer
+// whose `wg set` fails must not stay in memory, be advertised, or be persisted
+// — before this, a transient wg failure left a phantom peer that reloaded on
+// every restart.
+func TestMergeRollsBackOnSetPeerFailure(t *testing.T) {
+	t.Parallel()
+	key := mustKey(t)
+	n, f := testNode(t, key, 1)
+	n.subnet = netip.MustParsePrefix("10.90.0.0/24")
+	n.st.Self.MeshIP = "10.90.0.1/24"
+	n.st.Self.Hostname = "node1"
+
+	bad := envelope.Peer{Pubkey: pubN(t, 2), Hostname: "node2", MeshIP: "10.90.0.2", LANEndpoint: "192.168.1.2:51820", ControlPort: 51821}
+	good := envelope.Peer{Pubkey: pubN(t, 3), Hostname: "node3", MeshIP: "10.90.0.3", LANEndpoint: "192.168.1.3:51820", ControlPort: 51821}
+	f.fail["wg set wglan0 peer "+bad.Pubkey] = true
+
+	a, c, snapshot := n.apply([]envelope.Peer{bad, good})
+	if a != 1 || c != 0 {
+		t.Errorf("added=%d changed=%d, want 1/0", a, c)
+	}
+	if n.st.byPubkey(bad.Pubkey) >= 0 {
+		t.Error("peer kept in memory after its wg set failed")
+	}
+	for _, p := range snapshot {
+		if p.Pubkey == bad.Pubkey {
+			t.Error("failed peer advertised in the reply snapshot")
+		}
+	}
+	st, ok, err := loadState(n.dir)
+	if err != nil || !ok {
+		t.Fatalf("peers.json: ok=%v err=%v", ok, err)
+	}
+	if st.byPubkey(bad.Pubkey) >= 0 {
+		t.Error("failed peer persisted to peers.json")
+	}
+	if st.byPubkey(good.Pubkey) < 0 {
+		t.Error("the healthy peer in the same batch was lost")
+	}
+
+	// Update path: a change whose wg call fails must leave the old entry intact.
+	f.fail["wg set wglan0 peer "+good.Pubkey] = true
+	moved := good
+	moved.MeshIP = "10.90.0.30"
+	if a, c, _ := n.apply([]envelope.Peer{moved}); a+c != 0 {
+		t.Errorf("failed update reported added=%d changed=%d", a, c)
+	}
+	if i := n.st.byPubkey(good.Pubkey); n.st.Peers[i].MeshIP != "10.90.0.3" {
+		t.Errorf("entry moved to %s though wg set failed", n.st.Peers[i].MeshIP)
+	}
+}
+
 // ---------------------------------------------------------------- protocol
 
 func TestThreeNodeConvergence(t *testing.T) {
